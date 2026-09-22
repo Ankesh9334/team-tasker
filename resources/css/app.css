@@ -64,7 +64,28 @@
     --radius-xl: 24px;
 }
 
-[data-theme="light"] {
+[data-theme="dark"],
+[data-bs-theme="dark"] {
+    --bg-main: #0f172a;
+    --bg-surface: rgba(30, 41, 59, 0.7);
+    --bg-sidebar: #1e293b;
+    --bg-input: rgba(255, 255, 255, 0.05);
+
+    --text-high: #f8fafc;
+    --text-medium: #94a3b8;
+    --text-low: #64748b;
+
+    --border-main: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+
+    --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --close-filter: invert(1) grayscale(100%) brightness(200%);
+    --bg-subtle: rgba(15, 23, 42, 0.3);
+}
+
+[data-theme="light"],
+[data-bs-theme="light"] {
     --bg-main: #f1f5f9;
     --bg-surface: rgba(255, 255, 255, 0.8);
     --bg-sidebar: #ffffff;
@@ -84,7 +105,24 @@
     --glass-border: rgba(255, 255, 255, 0.5);
     --close-filter: none;
     --bg-subtle: rgba(241, 245, 249, 0.8);
-    --accent-rgb: 16, 185, 129;
+}
+
+/* Base HTML & Canvas Colors - Immediate Paint */
+html {
+    background-color: var(--bg-main);
+    color: var(--text-high);
+}
+
+html[data-theme="dark"],
+html[data-bs-theme="dark"] {
+    color-scheme: dark;
+    background-color: #0f172a !important;
+}
+
+html[data-theme="light"],
+html[data-bs-theme="light"] {
+    color-scheme: light;
+    background-color: #f1f5f9 !important;
 }
 
 /* --- Global Reset & Base --- */
@@ -94,13 +132,21 @@
 
 body {
     font-family: 'Outfit', sans-serif;
-    background-color: var(--bg-main);
+    background-color: var(--bg-main) !important;
     color: var(--text-high);
     margin: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
-    transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+/* Only animate theme transitions when actively toggled by user */
+html.theme-toggling,
+html.theme-toggling body,
+html.theme-toggling .glass-card,
+html.theme-toggling .layout-header-premium,
+html.theme-toggling .layout-sidebar-premium {
+    transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease !important;
 }
 
 h1,

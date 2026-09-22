@@ -8,9 +8,14 @@
             <h1 class="h3 fw-semibold mb-1 text-high">Leave & Regularization Requests</h1>
             <p class="text-low mb-0" style="font-size: 0.9rem;">Manage employee leave, overtime, and regularization requests.</p>
         </div>
-        <button class="btn-premium btn-premium-primary px-4 py-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#newRequestModal">
-            <i class="fas fa-plus-circle me-1"></i> New Request
-        </button>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ route('admin.attendance.calendar') }}" class="btn-premium btn-premium-secondary px-3 py-2 shadow-sm d-flex align-items-center gap-1">
+                <i class="fas fa-calendar-alt me-1"></i> Calendar View
+            </a>
+            <button class="btn-premium btn-premium-primary px-4 py-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#newRequestModal">
+                <i class="fas fa-plus-circle me-1"></i> New Request
+            </button>
+        </div>
     </div>
 
     <form id="bulkRequestsForm" action="{{ route('admin.attendance.requests.bulkAction') }}" method="POST">
@@ -30,9 +35,6 @@
                 </div>
                 <div class="data-grid-results">{{ $requests->total() }} Results</div>
                 <div class="data-grid-actions d-flex align-items-center gap-2">
-                    <button type="button" class="btn-premium btn-premium-secondary py-1 px-3" onclick="document.getElementById('filterSlideoverAttendance').classList.add('show')">
-                        <i class="fas fa-sliders-h me-1"></i> Filter
-                    </button>
                     {{ $requests->links('components.pagination.premium') }}
                 </div>
             </div>

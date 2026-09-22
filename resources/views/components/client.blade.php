@@ -1,16 +1,36 @@
 @props(['title' => 'Client Dashboard | Team Tasker', 'fullscreen' => false, 'hideSidebar' => false, 'noPadding' => false])
+@php
+    $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+    $appLogo = $appSettings['app_logo'] ?? null;
+    $currentTheme = request()->cookie('theme', 'dark');
+    if (!in_array($currentTheme, ['dark', 'light'])) {
+        $currentTheme = 'dark';
+    }
+@endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="{{ $currentTheme }}" data-bs-theme="{{ $currentTheme }}" style="background-color: {{ $currentTheme === 'light' ? '#f1f5f9' : '#0f172a' }}; color-scheme: {{ $currentTheme }};">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title ?? 'Admin Dashboard | Team Tasker' }}</title>
 
-    @php
-        $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
-        $appLogo = $appSettings['app_logo'] ?? null;
-    @endphp
+    <!-- Synchronous Anti-FOUC Theme Pre-initializer: Runs before any CSS or DOM rendering -->
+    <script>
+        (function() {
+            try {
+                var stored = localStorage.getItem('theme');
+                var theme = stored || document.documentElement.getAttribute('data-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                document.documentElement.style.backgroundColor = (theme === 'light' ? '#f1f5f9' : '#0f172a');
+                document.documentElement.style.colorScheme = theme;
+                if (stored && document.cookie.indexOf('theme=' + stored) === -1) {
+                    document.cookie = 'theme=' + stored + ';path=/;max-age=31536000;SameSite=Lax';
+                }
+            } catch (e) {}
+        })();
+    </script>
 
     @if ($appLogo)
         <link rel="icon" href="{{ asset('storage/' . $appLogo) }}">
@@ -641,7 +661,7 @@
             <div class="header-utils">
                 <!-- Theme Toggle -->
                 <button class="header-icon-btn" id="themeToggle" title="Toggle Theme">
-                    <i class="fas fa-moon"></i>
+                    <i class="fas {{ $currentTheme === 'dark' ? 'fa-moon' : 'fa-sun' }}"></i>
                 </button>
 
                 <!-- Notification Placeholder -->
@@ -886,31 +906,46 @@
         document.addEventListener('DOMContentLoaded', function () {
             // Theme Toggle Logic
             const themeToggle = document.getElementById('themeToggle');
-            const icon = themeToggle.querySelector('i');
+            const icon = themeToggle ? themeToggle.querySelector('i') : null;
             const html = document.documentElement;
 
-            // Check saved theme or default to dark
-            const savedTheme = localStorage.getItem('theme') || 'dark';
+            // Sync saved theme or default
+            const savedTheme = localStorage.getItem('theme') || html.getAttribute('data-theme') || 'dark';
             html.setAttribute('data-theme', savedTheme);
+            html.setAttribute('data-bs-theme', savedTheme);
+            html.style.backgroundColor = savedTheme === 'light' ? '#f1f5f9' : '#0f172a';
+            html.style.colorScheme = savedTheme;
             updateIcon(savedTheme);
 
-            themeToggle.addEventListener('click', () => {
-                const currentTheme = html.getAttribute('data-theme');
-                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => {
+                    const currentTheme = html.getAttribute('data-theme') || 'dark';
+                    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-                html.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-                updateIcon(newTheme);
+                    html.classList.add('theme-toggling');
+                    html.setAttribute('data-theme', newTheme);
+                    html.setAttribute('data-bs-theme', newTheme);
+                    html.style.backgroundColor = newTheme === 'light' ? '#f1f5f9' : '#0f172a';
+                    html.style.colorScheme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    document.cookie = 'theme=' + newTheme + ';path=/;max-age=31536000;SameSite=Lax';
+                    updateIcon(newTheme);
 
-                // Dispatch event for components like TinyMCE to react
-                window.dispatchEvent(new CustomEvent('theme-changed', {
-                    detail: {
-                        theme: newTheme
-                    }
-                }));
-            });
+                    setTimeout(() => {
+                        html.classList.remove('theme-toggling');
+                    }, 300);
+
+                    // Dispatch event for components like TinyMCE to react
+                    window.dispatchEvent(new CustomEvent('theme-changed', {
+                        detail: {
+                            theme: newTheme
+                        }
+                    }));
+                });
+            }
 
             function updateIcon(theme) {
+                if (!icon) return;
                 if (theme === 'dark') {
                     icon.classList.remove('fa-sun');
                     icon.classList.add('fa-moon');

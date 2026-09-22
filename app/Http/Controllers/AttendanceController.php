@@ -26,13 +26,47 @@ class AttendanceController extends Controller
     /**
      * Attendance Dashboard.
      */
-    public function dashboard()
+    public function dashboard(Request $request)
     {
         $user = Auth::user();
+        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
+        if ($date === 'today') {
+            $date = $this->attendanceService->today()->format('Y-m-d');
+        } elseif ($date === 'yesterday') {
+            $date = $this->attendanceService->today()->subDay()->format('Y-m-d');
+        }
+
         $today = $this->attendanceService->today();
         $todayStr = $today->format('Y-m-d');
 
-        $dailyStats = $this->attendanceService->getDailyStats($todayStr);
+        $search = $request->input('search');
+        $approvalStatus = $request->input('approval_status');
+        $attendanceStatus = $request->input('attendance_status') ?: $request->input('status');
+
+        $filters = [
+            'date' => $date,
+            'search' => $search,
+            'attendance_status' => $attendanceStatus,
+            'approval_status' => $approvalStatus,
+        ];
+
+        $perPage = (int) $request->input('per_page', 15);
+        $users = $this->attendanceService->getDailyReport($filters, $perPage > 0 ? $perPage : 15);
+        $dailyStats = $this->attendanceService->getDailyStats($date);
+
+        $attendances = Attendance::with(['user', 'approver'])
+            ->where('attendance_date', $date)
+            ->whereIn('user_id', $users->pluck('id'))
+            ->get()
+            ->keyBy('user_id');
+
+        $timeLogCounts = TimeLog::whereIn('user_id', $users->pluck('id'))
+            ->whereDate('start_time', $date)
+            ->selectRaw('user_id, count(*) as count, sum(duration) as total_duration')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
         $myAttendance = Attendance::where('user_id', $user->id)
             ->where(function ($q) use ($todayStr) {
                 $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
@@ -73,7 +107,11 @@ class AttendanceController extends Controller
         $absentToday = $dailyStats['not_submitted'] + $dailyStats['rejected'];
 
         return view('admin.attendance.dashboard', compact(
+            'users',
+            'attendances',
+            'date',
             'dailyStats',
+            'timeLogCounts',
             'presentToday',
             'lateToday',
             'onLeaveToday',
@@ -256,7 +294,8 @@ class AttendanceController extends Controller
     public function myDaily(Request $request)
     {
         $user = Auth::user();
-        $today = $this->attendanceService->today();
+        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
+        $today = Carbon::parse($date);
         $todayStr = $today->format('Y-m-d');
 
         $myAttendance = Attendance::with(['logs.user', 'approver'])
@@ -266,16 +305,42 @@ class AttendanceController extends Controller
             })
             ->first();
 
-        $timeLogs = TimeLog::where('user_id', $user->id)
+        $search = $request->input('search');
+
+        $timeLogsQuery = TimeLog::where('user_id', $user->id)
             ->whereDate('start_time', $todayStr)
             ->with('task.project')
-            ->orderBy('start_time')
-            ->get();
+            ->orderBy('start_time');
+
+        if ($search) {
+            $timeLogsQuery->where(function ($q) use ($search) {
+                $q->where('description', 'like', "%{$search}%")
+                  ->orWhereHas('task', function ($tq) use ($search) {
+                      $tq->where('title', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $timeLogs = $timeLogsQuery->get();
 
         $totalTrackedSeconds = $timeLogs->sum('duration');
         $formattedTotalTracked = gmdate('H\h i\m', $totalTrackedSeconds);
 
-        return view('admin.attendance.my-daily', compact('myAttendance', 'today', 'timeLogs', 'formattedTotalTracked'));
+        // Fetch recent attendance history for the user's daily attendance datagrid
+        $recentAttendances = Attendance::where('user_id', $user->id)
+            ->orderByDesc('attendance_date')
+            ->orderByDesc('date')
+            ->paginate(10, ['*'], 'history_page')
+            ->withQueryString();
+
+        return view('admin.attendance.my-daily', compact(
+            'myAttendance',
+            'today',
+            'date',
+            'timeLogs',
+            'formattedTotalTracked',
+            'recentAttendances'
+        ));
     }
 
     /**
@@ -336,11 +401,43 @@ class AttendanceController extends Controller
     {
         $user = Auth::user();
         $month = $request->input('month', $this->attendanceService->today()->format('Y-m'));
+        $status = $request->input('status');
+        $search = $request->input('search');
 
         $stats = $this->attendanceService->getMonthlyUserStats($user, $month);
         $calendar = $this->attendanceService->getUserMonthlyCalendar($user->id, $month);
 
-        return view('admin.attendance.my-monthly', compact('user', 'month', 'stats', 'calendar'));
+        $startDate = Carbon::parse("{$month}-01")->startOfMonth();
+        $endDate = $startDate->copy()->endOfMonth();
+
+        $query = Attendance::where('user_id', $user->id)
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+                  ->orWhereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+            });
+
+        if ($status) {
+            if (in_array($status, ['pending', 'approved', 'rejected'])) {
+                $query->where('approval_status', $status);
+            } else {
+                $query->where('attendance_status', $status);
+            }
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('remarks', 'like', "%{$search}%")
+                  ->orWhere('attendance_date', 'like', "%{$search}%")
+                  ->orWhere('date', 'like', "%{$search}%");
+            });
+        }
+
+        $records = $query->orderByDesc('attendance_date')
+            ->orderByDesc('date')
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('admin.attendance.my-monthly', compact('user', 'month', 'status', 'search', 'stats', 'calendar', 'records'));
     }
 
     /**
@@ -841,9 +938,19 @@ class AttendanceController extends Controller
             $userId = $request->input('user_id', Auth::id());
         }
 
-        $attendances = Attendance::where('user_id', $userId)->get();
         $events = [];
 
+        if ($userId === 'all') {
+            $attendances = Attendance::with('user')->get();
+            $requests = AttendanceRequest::with(['user', 'actionBy'])->get();
+            $selectedUser = null;
+        } else {
+            $attendances = Attendance::with('user')->where('user_id', $userId)->get();
+            $requests = AttendanceRequest::with(['user', 'actionBy'])->where('user_id', $userId)->get();
+            $selectedUser = User::find($userId);
+        }
+
+        // 1. Process Attendance Logs
         foreach ($attendances as $att) {
             $color = match ($att->attendance_status) {
                 'present' => '#10b981', // success
@@ -852,7 +959,8 @@ class AttendanceController extends Controller
                 default => '#6b7280',
             };
 
-            $title = ucfirst($att->attendance_status).($att->check_in ? ' ('.Carbon::parse($att->check_in)->format('H:i').')' : '');
+            $titlePrefix = ($userId === 'all' && $att->user) ? "{$att->user->name} - " : '';
+            $title = $titlePrefix.ucfirst(str_replace('_', ' ', $att->attendance_status)).($att->check_in ? ' ('.Carbon::parse($att->check_in)->format('h:i A').')' : '');
             if ($att->approval_status === 'pending') {
                 $title .= ' [Pending]';
             } elseif ($att->approval_status === 'rejected') {
@@ -860,17 +968,76 @@ class AttendanceController extends Controller
             }
 
             $events[] = [
+                'id' => 'att_'.$att->id,
                 'title' => $title,
-                'start' => $att->attendance_date?->format('Y-m-d') ?? $att->date,
+                'start' => $att->attendance_date?->format('Y-m-d') ?? Carbon::parse($att->date)->format('Y-m-d'),
                 'backgroundColor' => $color,
                 'borderColor' => $color,
+                'textColor' => '#ffffff',
                 'allDay' => true,
+                'extendedProps' => [
+                    'is_request' => false,
+                    'status' => ucfirst(str_replace('_', ' ', $att->attendance_status)),
+                    'approval_status' => ucfirst($att->approval_status ?? 'Approved'),
+                    'check_in' => $att->check_in ? Carbon::parse($att->check_in)->format('h:i A') : '--:--',
+                    'check_out' => $att->check_out ? Carbon::parse($att->check_out)->format('h:i A') : '--:--',
+                    'working_hours' => $att->formatted_working_hours,
+                    'remarks' => $att->remarks,
+                    'user_name' => $att->user?->name,
+                ],
             ];
         }
 
-        $users = User::all();
+        // 2. Process Leave & Regularization Requests
+        foreach ($requests as $req) {
+            $type = $req->type; // 'Leave', 'Regularization', 'Overtime'
+            $status = $req->status; // 'Pending', 'Approved', 'Rejected'
 
-        return view('admin.attendance.calendar', compact('events', 'users', 'userId'));
+            $color = match ($status) {
+                'Approved' => $type === 'Leave' ? '#8b5cf6' : ($type === 'Overtime' ? '#06b6d4' : '#10b981'),
+                'Rejected' => '#ef4444',
+                default => '#f59e0b', // Pending is warning/amber
+            };
+
+            $startDate = Carbon::parse($req->start_date);
+            $endDate = $req->end_date ? Carbon::parse($req->end_date) : $startDate->copy();
+            // FullCalendar allDay end date is exclusive
+            $exclusiveEndDate = $endDate->copy()->addDay()->format('Y-m-d');
+
+            $titlePrefix = ($userId === 'all' && $req->user) ? "{$req->user->name} - " : '';
+            $title = "{$titlePrefix}{$type} [{$status}]";
+            if ($req->type === 'Leave' && $req->start_date !== $req->end_date && $req->end_date) {
+                $days = $startDate->diffInDays($endDate) + 1;
+                $title = "{$titlePrefix}{$type} ({$days}d) [{$status}]";
+            }
+
+            $events[] = [
+                'id' => 'req_'.$req->id,
+                'title' => $title,
+                'start' => $startDate->format('Y-m-d'),
+                'end' => $exclusiveEndDate,
+                'backgroundColor' => $color,
+                'borderColor' => $color,
+                'textColor' => '#ffffff',
+                'allDay' => true,
+                'extendedProps' => [
+                    'is_request' => true,
+                    'type' => $req->type,
+                    'status' => $req->status,
+                    'reason' => $req->reason,
+                    'action_notes' => $req->action_notes,
+                    'start_date' => $startDate->format('d M Y'),
+                    'end_date' => $endDate->format('d M Y'),
+                    'action_by' => $req->actionBy?->name,
+                    'user_name' => $req->user?->name,
+                    'user_id' => $req->user_id,
+                ],
+            ];
+        }
+
+        $users = User::orderBy('name')->get(['id', 'name', 'email']);
+
+        return view('admin.attendance.calendar', compact('events', 'users', 'userId', 'selectedUser'));
     }
 
     /**

@@ -1,19 +1,40 @@
 @props(['title' => 'Admin Dashboard | Team Tasker', 'fullscreen' => false, 'hideSidebar' => false, 'noPadding' => false])
+@php
+    $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+    $appLogo = $appSettings['app_logo'] ?? null;
+    $currentTheme = request()->cookie('theme', 'dark');
+    if (!in_array($currentTheme, ['dark', 'light'])) {
+        $currentTheme = 'dark';
+    }
+@endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="{{ $currentTheme }}" data-bs-theme="{{ $currentTheme }}" style="background-color: {{ $currentTheme === 'light' ? '#f1f5f9' : '#0f172a' }}; color-scheme: {{ $currentTheme }};">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title ?? 'Admin Dashboard | Team Tasker' }}</title>
+
+    <!-- Synchronous Anti-FOUC Theme Pre-initializer: Runs before any CSS or DOM rendering -->
+    <script>
+        (function() {
+            try {
+                var stored = localStorage.getItem('theme');
+                var theme = stored || document.documentElement.getAttribute('data-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                document.documentElement.style.backgroundColor = (theme === 'light' ? '#f1f5f9' : '#0f172a');
+                document.documentElement.style.colorScheme = theme;
+                if (stored && document.cookie.indexOf('theme=' + stored) === -1) {
+                    document.cookie = 'theme=' + stored + ';path=/;max-age=31536000;SameSite=Lax';
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     @if(env('ENABLE_WEBSOCKETS', false))
         <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     @endif
-
-    @php
-        $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
-        $appLogo = $appSettings['app_logo'] ?? null;
-    @endphp
 
     <!-- PWA Web App Manifest & Meta Tags -->
     <link rel="manifest" href="{{ route('pwa.manifest') }}">
@@ -1040,7 +1061,7 @@
 
             <!-- Theme Toggle -->
             <button class="header-icon-btn" id="themeToggle" title="Toggle Theme">
-                <i class="fas fa-moon"></i>
+                <i class="fas {{ $currentTheme === 'dark' ? 'fa-moon' : 'fa-sun' }}"></i>
             </button>
 
             <!-- Notification Placeholder -->
@@ -1214,7 +1235,7 @@
 
             @if (Auth::user()->hasPermission('attendance.view') || Auth::user()->hasPermission('attendance.punch') || Auth::user()->hasPermission('attendance.daily') || Auth::user()->hasPermission('attendance.monthly') || Auth::user()->hasPermission('attendance.dashboard_overview') || Auth::user()->hasPermission('attendance.settings'))
             @php
-                $isAttendanceActive = (request()->routeIs('admin.attendance.*') && !request()->routeIs('admin.attendance.requests'));
+                $isAttendanceActive = request()->routeIs('admin.attendance.*');
             @endphp
             <div class="nav-item">
                 <a href="javascript:void(0)"
@@ -1225,21 +1246,21 @@
                     <i class="fas fa-chevron-right ms-auto toggle-icon-premium {{ $isAttendanceActive ? 'rotate' : '' }}"></i>
                 </a>
                 <div class="nav-submenu-premium {{ $isAttendanceActive ? 'show' : '' }}">
-                    @if(Auth::user()->hasPermission('attendance.dashboard_overview'))
+                    @if(Auth::user()->hasPermission('attendance.dashboard_overview') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.dashboard') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.dashboard') ? 'active' : '' }}">
                         <i class="fas fa-chart-pie"></i> Dashboard
                     </a>
                     @endif
 
-                    @if(Auth::user()->hasPermission('attendance.daily') || Auth::user()->hasPermission('attendance.approve') || Auth::user()->hasPermission('attendance.manage'))
+                    @if(Auth::user()->hasPermission('attendance.daily') || Auth::user()->hasPermission('attendance.approve') || Auth::user()->hasPermission('attendance.manage') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.daily') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.daily') ? 'active' : '' }}">
                         <i class="fas fa-file-invoice"></i> Daily Work Reports
                     </a>
                     @endif
 
-                    @if(Auth::user()->hasPermission('attendance.monthly') || Auth::user()->hasPermission('attendance.report') || Auth::user()->hasPermission('attendance.manage'))
+                    @if(Auth::user()->hasPermission('attendance.monthly') || Auth::user()->hasPermission('attendance.report') || Auth::user()->hasPermission('attendance.manage') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.monthly') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.monthly') ? 'active' : '' }}">
                         <i class="fas fa-calendar-days"></i> Monthly Attendance
@@ -1257,21 +1278,28 @@
                     </a>
                     @endif
 
-                    @if(Auth::user()->hasPermission('attendance.calendar_all') || Auth::user()->hasPermission('attendance.view'))
+                    @if(Auth::user()->hasPermission('attendance.calendar_all') || Auth::user()->hasPermission('attendance.view') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.calendar') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.calendar') ? 'active' : '' }}">
                         <i class="fas fa-calendar-alt"></i> Calendar
                     </a>
                     @endif
 
-                    @if(Auth::user()->hasPermission('attendance.reports') || Auth::user()->hasPermission('attendance.report') || Auth::user()->hasPermission('attendance.export'))
+                    @if(Auth::user()->hasPermission('attendance.requests_manage') || Auth::user()->hasPermission('attendance.view') || Auth::user()->hasPermission('hr.leave_requests') || Auth::user()->hasRole('super-admin'))
+                    <a href="{{ route('admin.attendance.requests') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.requests') ? 'active' : '' }}">
+                        <i class="fas fa-envelope-open-text"></i> Leave Requests
+                    </a>
+                    @endif
+
+                    @if(Auth::user()->hasPermission('attendance.reports') || Auth::user()->hasPermission('attendance.report') || Auth::user()->hasPermission('attendance.export') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.reports') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.reports') ? 'active' : '' }}">
                         <i class="fas fa-file-export"></i> Reports
                     </a>
                     @endif
                     
-                    @if(Auth::user()->hasPermission('attendance.settings') || Auth::user()->hasPermission('attendance.manage'))
+                    @if(Auth::user()->hasPermission('attendance.settings') || Auth::user()->hasPermission('attendance.manage') || Auth::user()->hasRole('super-admin'))
                     <a href="{{ route('admin.attendance.settings') }}"
                         class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.settings') ? 'active' : '' }}">
                         <i class="fas fa-business-time"></i> Attendance Settings
@@ -1286,7 +1314,6 @@
                     $isHrActive = request()->routeIs('admin.hr.*') || 
                                   request()->routeIs('admin.users.*') || 
                                   request()->routeIs('admin.roles.*') || 
-                                  request()->routeIs('admin.attendance.requests') || 
                                   request()->routeIs('admin.settings.autostop');
                 @endphp
                 <div class="nav-item">
@@ -1314,12 +1341,6 @@
                             <a href="{{ route('admin.roles.index') }}"
                                 class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.roles.*') ? 'active' : '' }}">
                                 <i class="fas fa-shield-halved"></i> Roles & Permissions
-                            </a>
-                        @endif
-                        @if (Auth::user()->hasRole('super-admin') || Auth::user()->hasPermission('attendance.requests_manage') || Auth::user()->hasPermission('attendance.view'))
-                            <a href="{{ route('admin.attendance.requests') }}"
-                                class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance.requests') ? 'active' : '' }}">
-                                <i class="fas fa-envelope-open-text"></i> Leave Requests
                             </a>
                         @endif
                         @if (Auth::user()->hasRole('super-admin') || Auth::user()->hasPermission('settings.view') || Auth::user()->hasPermission('hr.manage'))
@@ -1532,31 +1553,46 @@
 
             // Theme Toggle Logic
             const themeToggle = document.getElementById('themeToggle');
-            const icon = themeToggle.querySelector('i');
+            const icon = themeToggle ? themeToggle.querySelector('i') : null;
             const html = document.documentElement;
 
-            // Check saved theme or default to dark
-            const savedTheme = localStorage.getItem('theme') || 'dark';
+            // Sync saved theme or default
+            const savedTheme = localStorage.getItem('theme') || html.getAttribute('data-theme') || 'dark';
             html.setAttribute('data-theme', savedTheme);
+            html.setAttribute('data-bs-theme', savedTheme);
+            html.style.backgroundColor = savedTheme === 'light' ? '#f1f5f9' : '#0f172a';
+            html.style.colorScheme = savedTheme;
             updateIcon(savedTheme);
 
-            themeToggle.addEventListener('click', () => {
-                const currentTheme = html.getAttribute('data-theme');
-                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => {
+                    const currentTheme = html.getAttribute('data-theme') || 'dark';
+                    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-                html.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-                updateIcon(newTheme);
+                    html.classList.add('theme-toggling');
+                    html.setAttribute('data-theme', newTheme);
+                    html.setAttribute('data-bs-theme', newTheme);
+                    html.style.backgroundColor = newTheme === 'light' ? '#f1f5f9' : '#0f172a';
+                    html.style.colorScheme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    document.cookie = 'theme=' + newTheme + ';path=/;max-age=31536000;SameSite=Lax';
+                    updateIcon(newTheme);
 
-                // Dispatch event for components like TinyMCE to react
-                window.dispatchEvent(new CustomEvent('theme-changed', {
-                    detail: {
-                        theme: newTheme
-                    }
-                }));
-            });
+                    setTimeout(() => {
+                        html.classList.remove('theme-toggling');
+                    }, 300);
+
+                    // Dispatch event for components like TinyMCE to react
+                    window.dispatchEvent(new CustomEvent('theme-changed', {
+                        detail: {
+                            theme: newTheme
+                        }
+                    }));
+                });
+            }
 
             function updateIcon(theme) {
+                if (!icon) return;
                 if (theme === 'dark') {
                     icon.classList.remove('fa-sun');
                     icon.classList.add('fa-moon');

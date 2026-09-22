@@ -18,18 +18,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success py-2 px-3 mb-4 d-flex align-items-center border-0" style="background: rgba(var(--success-rgb), 0.1); color: var(--success);">
-            <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
-        </div>
-    @endif
-
-    @if(session('error'))
-        <div class="alert alert-danger py-2 px-3 mb-4 d-flex align-items-center border-0" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">
-            <i class="fas fa-exclamation-circle me-2"></i> {{ session('error') }}
-        </div>
-    @endif
-
     @php
         $groupMeta = [
             'hr' => ['title' => 'HR Settings', 'icon' => 'fas fa-user-gear text-primary', 'is_hr' => true],
