@@ -6,7 +6,6 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskLog;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -15,7 +14,9 @@ class ActivityFeedFeatureTest extends TestCase
     use DatabaseTransactions;
 
     protected User $adminUser;
+
     protected User $userOne;
+
     protected User $userTwo;
 
     protected function setUp(): void

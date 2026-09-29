@@ -461,6 +461,7 @@ class SettingsController extends Controller
             foreach ($statuses as $status) {
                 if ($status->is_default || $status->tasks_count > 0) {
                     $skipped++;
+
                     continue;
                 }
                 $status->delete();

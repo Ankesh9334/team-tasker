@@ -19,7 +19,7 @@ class NotificationController extends Controller
     public function readAndRedirect($id)
     {
         $user = Auth::user() ?? Auth::guard('admin')->user();
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
@@ -29,16 +29,16 @@ class NotificationController extends Controller
             $notification->markAsRead();
             $data = $notification->data ?? [];
 
-            if (!empty($data['conversation_id'])) {
+            if (! empty($data['conversation_id'])) {
                 return redirect()->route('admin.chat.index', ['conversation_id' => $data['conversation_id']]);
             }
-            if (!empty($data['user_id']) && str_contains($notification->type, 'Chat')) {
+            if (! empty($data['user_id']) && str_contains($notification->type, 'Chat')) {
                 return redirect()->route('admin.chat.index', ['user_id' => $data['user_id']]);
             }
-            if (!empty($data['task_id'])) {
+            if (! empty($data['task_id'])) {
                 return redirect()->route('details', $data['task_id']);
             }
-            if (!empty($data['ticket_id'])) {
+            if (! empty($data['ticket_id'])) {
                 return redirect()->route('admin.tickets.show', $data['ticket_id']);
             }
             if (str_contains($notification->type, 'Attendance')) {

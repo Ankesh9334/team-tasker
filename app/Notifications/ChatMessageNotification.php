@@ -104,7 +104,7 @@ class ChatMessageNotification extends Notification implements ShouldQueue
 
         return [
             'conversation_id' => $this->message->conversation_id,
-            'message' => 'New message from ' . $senderName,
+            'message' => 'New message from '.$senderName,
             'title' => $senderName,
             'description' => \Illuminate\Support\Str::limit($body, 60),
             'sender_id' => $this->message->user_id ?? $this->message->client_id,

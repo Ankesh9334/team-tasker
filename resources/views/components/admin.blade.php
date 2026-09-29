@@ -1134,101 +1134,106 @@
     <aside class="sidebar-premium {{ $hideSidebar ? 'd-lg-none' : '' }}">
 
         <nav>
-            @if (Auth::user()->hasPermission('dashboard.view'))
+            @if (Auth::user()->hasPermission('dashboard.view') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('dashboard') }}"
-                    class="nav-link-premium {{ request()->is('admin/tasks/dashboard') ? 'active' : '' }}">
+                    class="nav-link-premium {{ request()->routeIs('dashboard') || request()->is('admin/tasks/dashboard') ? 'active' : '' }}">
                     <i class="fas fa-chart-line"></i> Dashboard
                 </a>
             @endif
 
-            @if (Auth::user()->hasPermission('projects.view'))
+            @if (Auth::user()->hasPermission('projects.view|projects.create|projects.edit|projects.delete') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('admin.projects.index') }}"
-                    class="nav-link-premium {{ request()->is('admin/projects*') ? 'active' : '' }}">
+                    class="nav-link-premium {{ request()->routeIs('admin.projects.*') || request()->is('admin/projects*') ? 'active' : '' }}">
                     <i class="fas fa-project-diagram"></i> Projects
                 </a>
             @endif
 
-            @if (Auth::user()->hasPermission('tasks.view') || Auth::user()->hasPermission('tasks.create'))
+            @if (Auth::user()->hasPermission('tasks.view|tasks.create|tasks.edit|tasks.my_tasks|tasks.todo|tasks.activity|tasks.board|tasks.calendar|tasks.gantt') || Auth::user()->hasRole('super-admin'))
+                @php
+                    $isTasksActive = (request()->is('admin/tasks*') && !request()->is('admin/tasks/dashboard')) 
+                                  || request()->is('admin/todos*') 
+                                  || request()->routeIs('index', 'create', 'edit', 'details', 'update', 'delete', 'tasks.*', 'admin.todos.*');
+                    $isMyTasksActive = request()->routeIs('index', 'create', 'edit', 'details', 'update', 'delete') 
+                                    || (request()->is('admin/tasks') || request()->is('admin/tasks/create') || request()->is('admin/tasks/edit/*') || request()->is('admin/tasks/details/*'));
+                @endphp
                 <div class="nav-item">
                     <a href="javascript:void(0)"
-                        class="nav-link-premium nav-dropdown {{ (request()->is('admin/tasks*') && !request()->is('admin/tasks/dashboard')) || request()->is('admin/todos*') ? 'active' : '' }}"
+                        class="nav-link-premium nav-dropdown {{ $isTasksActive ? 'active' : '' }}"
                         onclick="toggleSubmenu(this)">
                         <i class="fas fa-tasks"></i>
                         <span>Tasks</span>
                         <i
-                            class="fas fa-chevron-right ms-auto toggle-icon-premium {{ (request()->is('admin/tasks*') && !request()->is('admin/tasks/dashboard')) || request()->is('admin/todos*') ? 'rotate' : '' }}"></i>
+                            class="fas fa-chevron-right ms-auto toggle-icon-premium {{ $isTasksActive ? 'rotate' : '' }}"></i>
                     </a>
                     <div
-                        class="nav-submenu-premium {{ (request()->is('admin/tasks*') && !request()->is('admin/tasks/dashboard')) || request()->is('admin/todos*') ? 'show' : '' }}">
+                        class="nav-submenu-premium {{ $isTasksActive ? 'show' : '' }}">
 
-                        @if (Auth::user()->hasPermission('tasks.view'))
-                            @if (Auth::user()->hasPermission('tasks.my_tasks'))
-                                <a href="{{ route('index') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('index') ? 'active' : '' }}">
-                                    <i class="fas fa-list"></i> My Tasks
-                                </a>
-                            @endif
-                            @if (Auth::user()->hasPermission('tasks.todo'))
-                                <a href="{{ route('admin.todos.index') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.todos.index') ? 'active' : '' }}">
-                                    <i class="fas fa-clipboard-list"></i> My To-Do List
-                                </a>
-                            @endif
-                            @if (Auth::user()->hasPermission('tasks.activity'))
-                                <a href="{{ route('tasks.activity') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.activity') ? 'active' : '' }}">
-                                    <i class="fas fa-stream"></i> My Task Activity
-                                </a>
-                            @endif
-                            @if (Auth::user()->hasPermission('tasks.board'))
-                                <a href="{{ route('tasks.board') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.board') ? 'active' : '' }}">
-                                    <i class="fas fa-columns"></i> Task Board
-                                </a>
-                            @endif
-                            @if (Auth::user()->hasPermission('tasks.calendar'))
-                                <a href="{{ route('tasks.calendar') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.calendar') ? 'active' : '' }}">
-                                    <i class="fas fa-calendar-alt"></i> Calendar
-                                </a>
-                            @endif
-                            @if (Auth::user()->hasPermission('tasks.gantt'))
-                                <a href="{{ route('tasks.gantt') }}"
-                                    class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.gantt') ? 'active' : '' }}">
-                                    <i class="fas fa-chart-bar"></i> Gantt Chart
-                                </a>
-                            @endif
+                        @if (Auth::user()->hasPermission('tasks.my_tasks|tasks.view|tasks.create|tasks.edit') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('index') }}"
+                                class="nav-link-premium sub-link-premium {{ $isMyTasksActive ? 'active' : '' }}">
+                                <i class="fas fa-list"></i> My Tasks
+                            </a>
+                        @endif
+                        @if (Auth::user()->hasPermission('tasks.todo') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('admin.todos.index') }}"
+                                class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.todos.*') || request()->is('admin/todos*') ? 'active' : '' }}">
+                                <i class="fas fa-clipboard-list"></i> My To-Do List
+                            </a>
+                        @endif
+                        @if (Auth::user()->hasPermission('tasks.activity') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('tasks.activity') }}"
+                                class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.activity*') || request()->is('admin/tasks/activity*') ? 'active' : '' }}">
+                                <i class="fas fa-stream"></i> My Task Activity
+                            </a>
+                        @endif
+                        @if (Auth::user()->hasPermission('tasks.board') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('tasks.board') }}"
+                                class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.board*') || request()->is('admin/tasks/board*') ? 'active' : '' }}">
+                                <i class="fas fa-columns"></i> Task Board
+                            </a>
+                        @endif
+                        @if (Auth::user()->hasPermission('tasks.calendar') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('tasks.calendar') }}"
+                                class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.calendar*') || request()->is('admin/tasks/calendar*') ? 'active' : '' }}">
+                                <i class="fas fa-calendar-alt"></i> Calendar
+                            </a>
+                        @endif
+                        @if (Auth::user()->hasPermission('tasks.gantt') || Auth::user()->hasRole('super-admin'))
+                            <a href="{{ route('tasks.gantt') }}"
+                                class="nav-link-premium sub-link-premium {{ request()->routeIs('tasks.gantt*') || request()->is('admin/tasks/gantt*') ? 'active' : '' }}">
+                                <i class="fas fa-chart-bar"></i> Gantt Chart
+                            </a>
                         @endif
                     </div>
                 </div>
             @endif
 
 
-            @if (Auth::user()->hasPermission('chat.view'))
+            @if (Auth::user()->hasPermission('chat.view') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('admin.chat.index') }}"
-                    class="nav-link-premium d-flex align-items-center {{ request()->routeIs('admin.chat.*') ? 'active' : '' }}">
+                    class="nav-link-premium d-flex align-items-center {{ request()->routeIs('admin.chat.*') || request()->is('admin/chat*') ? 'active' : '' }}">
                     <i class="fas fa-comments"></i><span>Team Chat</span>
                     <livewire:global-chat-badge />
                 </a>
             @endif
 
-            @if (Auth::user()->hasPermission('meetings.view'))
+            @if (Auth::user()->hasPermission('meetings.view') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('admin.meetings.index') }}"
-                    class="nav-link-premium {{ request()->routeIs('admin.meetings.*') ? 'active' : '' }}">
+                    class="nav-link-premium {{ request()->routeIs('admin.meetings.*') || request()->is('admin/meetings*') ? 'active' : '' }}">
                     <i class="fas fa-video"></i> <span>Meetings & Calls</span>
                 </a>
             @endif
 
-            @if (Auth::user()->hasPermission('tickets.view'))
+            @if (Auth::user()->hasPermission('tickets.view') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('admin.tickets.index') }}"
-                    class="nav-link-premium {{ request()->routeIs('admin.tickets.*') ? 'active' : '' }}">
+                    class="nav-link-premium {{ request()->routeIs('admin.tickets.*') || request()->is('admin/tickets*') ? 'active' : '' }}">
                     <i class="fas fa-ticket-alt"></i> Tickets
                 </a>
             @endif
 
-            @if (Auth::user()->hasPermission('clients.view'))
+            @if (Auth::user()->hasPermission('clients.view') || Auth::user()->hasRole('super-admin'))
                 <a href="{{ route('admin.clients.index') }}"
-                    class="nav-link-premium {{ request()->routeIs('admin.clients.*') ? 'active' : '' }}">
+                    class="nav-link-premium {{ request()->routeIs('admin.clients.*') || request()->is('admin/clients*') ? 'active' : '' }}">
                     <i class="fas fa-user-tie"></i> Clients
                 </a>
             @endif
@@ -1309,7 +1314,7 @@
             </div>
             @endif
 
-            @if (Auth::user()->hasRole('super-admin') || Auth::user()->hasPermission('settings.view') || Auth::user()->hasPermission('hr.view') || Auth::user()->hasPermission('hr.manage') || Auth::user()->hasPermission('users.view') || Auth::user()->hasPermission('roles.view') || Auth::user()->hasPermission('attendance.requests_manage') || Auth::user()->hasPermission('attendance.view'))
+            @if (Auth::user()->hasRole('super-admin') || Auth::user()->hasPermission('settings.view') || Auth::user()->hasPermission('hr.view') || Auth::user()->hasPermission('hr.manage') || Auth::user()->hasPermission('users.view') || Auth::user()->hasPermission('roles.view') || Auth::user()->hasPermission('attendance.requests_manage'))
                 @php
                     $isHrActive = request()->routeIs('admin.hr.*') || 
                                   request()->routeIs('admin.users.*') || 

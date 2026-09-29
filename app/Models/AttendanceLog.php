@@ -63,6 +63,6 @@ class AttendanceLog extends Model
             return $admin->name;
         }
 
-        return 'User #' . $this->user_id;
+        return 'User #'.$this->user_id;
     }
 }

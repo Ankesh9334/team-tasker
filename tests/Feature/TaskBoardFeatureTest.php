@@ -15,8 +15,11 @@ class TaskBoardFeatureTest extends TestCase
     use DatabaseTransactions;
 
     protected User $adminUser;
+
     protected User $staffUser;
+
     protected Status $statusTodo;
+
     protected Status $statusDone;
 
     protected function setUp(): void

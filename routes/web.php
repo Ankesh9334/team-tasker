@@ -4,6 +4,24 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskLogController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\SearchController;
+use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\TicketController;
+use App\Http\Controllers\ClientController;
+use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ChunkUploadController;
+use App\Http\Controllers\TodoController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\AdminClientController;
+use App\Http\Controllers\EnquiryController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use App\Models\Client;
+use App\Models\User;
+use App\Models\Admin;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Route;
 
 // Auth Controller
@@ -32,13 +50,13 @@ Route::controller(AuthController::class)->group(function () {
 });
 
 // Search Controller
-Route::middleware(['web', 'auth:web,admin'])->get('/search', [App\Http\Controllers\SearchController::class, 'index'])->name('search.global');
+Route::middleware(['web', 'auth:web,admin'])->get('/search', [SearchController::class, 'index'])->name('search.global');
 
 // Notifications
 Route::middleware(['web', 'auth:web,admin,client'])->group(function () {
-    Route::get('/notifications/{id}/read', [App\Http\Controllers\NotificationController::class, 'readAndRedirect'])->name('notifications.readAndRedirect');
-    Route::post('/notifications/mark-as-read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.markAsRead');
-    Route::post('/update-fcm-token', function (Illuminate\Http\Request $request) {
+    Route::get('/notifications/{id}/read', [NotificationController::class, 'readAndRedirect'])->name('notifications.readAndRedirect');
+    Route::post('/notifications/mark-as-read', [NotificationController::class, 'markAsRead'])->name('notifications.markAsRead');
+    Route::post('/update-fcm-token', function (Request $request) {
         $request->validate(['token' => 'required|string']);
         $user = auth('client')->user() ?? auth('web')->user() ?? auth('admin')->user();
         if ($user) {
@@ -56,12 +74,12 @@ Route::middleware(['web', 'auth:web,admin,client'])->group(function () {
             }
 
             // Sync with counterpart
-            if (! $user instanceof \App\Models\Client) {
+            if (! $user instanceof Client) {
                 $syncTokens = json_encode($tokens);
-                if ($user instanceof \App\Models\Admin) {
-                    \App\Models\User::where('email', $user->email)->update(['fcm_token' => $syncTokens]);
-                } elseif ($user instanceof \App\Models\User) {
-                    \App\Models\Admin::where('email', $user->email)->update(['fcm_token' => $syncTokens]);
+                if ($user instanceof Admin) {
+                    User::where('email', $user->email)->update(['fcm_token' => $syncTokens]);
+                } elseif ($user instanceof User) {
+                    Admin::where('email', $user->email)->update(['fcm_token' => $syncTokens]);
                 }
             }
         }
@@ -71,14 +89,14 @@ Route::middleware(['web', 'auth:web,admin,client'])->group(function () {
 });
 
 // Chunk Upload Route
-Route::post('/upload-chunk', [App\Http\Controllers\ChunkUploadController::class, 'upload'])->name('upload.chunk')->middleware(['web']);
+Route::post('/upload-chunk', [ChunkUploadController::class, 'upload'])->name('upload.chunk')->middleware(['web']);
 
 // Public Enquiry Route
-Route::get('/enquire', [App\Http\Controllers\EnquiryController::class, 'create'])->name('enquiry.create');
-Route::post('/enquire', [App\Http\Controllers\EnquiryController::class, 'store'])->name('enquiry.store');
+Route::get('/enquire', [EnquiryController::class, 'create'])->name('enquiry.create');
+Route::post('/enquire', [EnquiryController::class, 'store'])->name('enquiry.store');
 
 // Project Controller
-Route::middleware(['web', 'auth:web,admin'])->controller(App\Http\Controllers\ProjectController::class)->prefix('admin/projects')->group(function () {
+Route::middleware(['web', 'auth:web,admin'])->controller(ProjectController::class)->prefix('admin/projects')->group(function () {
     Route::get('/', 'index')->name('admin.projects.index')->middleware('permission:projects.view');
     Route::get('/create', 'create')->name('admin.projects.create')->middleware('permission:projects.create');
     Route::post('/', 'store')->name('admin.projects.store')->middleware('permission:projects.create');
@@ -90,7 +108,7 @@ Route::middleware(['web', 'auth:web,admin'])->controller(App\Http\Controllers\Pr
 });
 
 // Todo Controller
-Route::middleware(['web', 'auth:web,admin', 'permission:tasks.todo'])->get('/admin/todos', [\App\Http\Controllers\TodoController::class, 'index'])->name('admin.todos.index');
+Route::middleware(['web', 'auth:web,admin', 'permission:tasks.todo'])->get('/admin/todos', [TodoController::class, 'index'])->name('admin.todos.index');
 
 // Task Controller
 Route::middleware(['web', 'auth:web,admin'])->controller(TaskController::class)->prefix('admin/tasks')->group(function () {
@@ -151,7 +169,7 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TeamController::class)-
     })->name('admin.chat.index')->middleware('permission:chat.view');
 
     // Tickets
-    Route::controller(App\Http\Controllers\TicketController::class)->prefix('tickets')->group(function () {
+    Route::controller(TicketController::class)->prefix('tickets')->group(function () {
         Route::get('/', 'index')->name('admin.tickets.index')->middleware('permission:tickets.view');
         Route::get('/create', 'create')->name('admin.tickets.create')->middleware('permission:tickets.create');
         Route::post('/', 'store')->name('admin.tickets.store')->middleware('permission:tickets.create');
@@ -163,7 +181,7 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TeamController::class)-
     });
 
     // Clients
-    Route::controller(App\Http\Controllers\AdminClientController::class)->prefix('clients')->group(function () {
+    Route::controller(AdminClientController::class)->prefix('clients')->group(function () {
         Route::get('/', 'index')->name('admin.clients.index')->middleware('permission:clients.view');
         Route::get('/create', 'create')->name('admin.clients.create')->middleware('permission:clients.create');
         Route::post('/', 'store')->name('admin.clients.store')->middleware('permission:clients.create');
@@ -173,7 +191,7 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TeamController::class)-
     });
 
     // Meetings & Calls
-    Route::controller(App\Http\Controllers\MeetingController::class)->group(function () {
+    Route::controller(MeetingController::class)->group(function () {
         Route::get('/meetings', 'index')->name('admin.meetings.index')->middleware('permission:meetings.view');
         Route::get('/meetings/create', 'create')->name('admin.meetings.create')->middleware('permission:meetings.create');
         Route::post('/meetings', 'store')->name('admin.meetings.store')->middleware('permission:meetings.create');
@@ -193,16 +211,16 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TeamController::class)-
 });
 
 // Client Support Portal
-Route::middleware(['web', 'auth:client,admin'])->prefix('client')->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\ClientController::class, 'dashboard'])->name('client.dashboard');
-    Route::get('/tickets/create', [App\Http\Controllers\ClientController::class, 'create'])->name('client.tickets.create');
-    Route::post('/tickets', [App\Http\Controllers\ClientController::class, 'store'])->name('client.tickets.store');
-    Route::get('/tickets/{id}', [App\Http\Controllers\ClientController::class, 'show'])->name('client.tickets.show');
-    Route::post('/tickets/{id}/reply', [App\Http\Controllers\ClientController::class, 'reply'])->name('client.tickets.reply');
+Route::middleware(['web', 'auth:client,admin'])->controller(ClientController::class)->prefix('client')->group(function () {
+    Route::get('/dashboard', 'dashboard')->name('client.dashboard');
+    Route::get('/tickets/create', 'create')->name('client.tickets.create');
+    Route::post('/tickets', 'store')->name('client.tickets.store');
+    Route::get('/tickets/{id}', 'show')->name('client.tickets.show');
+    Route::post('/tickets/{id}/reply', 'reply')->name('client.tickets.reply');
 
     // Client Tasks
-    Route::get('/tasks/{id}', [App\Http\Controllers\ClientController::class, 'showTask'])->name('client.tasks.show');
-    Route::post('/tasks/{id}/reply', [App\Http\Controllers\ClientController::class, 'replyTask'])->name('client.tasks.reply');
+    Route::get('/tasks/{id}', 'showTask')->name('client.tasks.show');
+    Route::post('/tasks/{id}/reply', 'replyTask')->name('client.tasks.reply');
 
     // Client Chat
     Route::get('/chat', function () {
@@ -210,19 +228,19 @@ Route::middleware(['web', 'auth:client,admin'])->prefix('client')->group(functio
     })->name('client.chat.index');
 
     // Client Profile Update
-    Route::post('/profile/update', [App\Http\Controllers\ClientController::class, 'updateProfile'])->name('client.profile.update');
+    Route::post('/profile/update', 'updateProfile')->name('client.profile.update');
 
     // Client Notifications
-    Route::get('/notifications/{id}/read', [App\Http\Controllers\ClientController::class, 'readAndRedirect'])->name('client.notifications.readAndRedirect');
-    Route::post('/notifications/mark-as-read', [App\Http\Controllers\ClientController::class, 'markNotificationsRead'])->name('client.notifications.markAsRead');
+    Route::get('/notifications/{id}/read', 'readAndRedirect')->name('client.notifications.readAndRedirect');
+    Route::post('/notifications/mark-as-read', 'markNotificationsRead')->name('client.notifications.markAsRead');
 });
 
 // Attendance Management
-Route::middleware(['web', 'auth:web,admin'])->controller(App\Http\Controllers\AttendanceController::class)->prefix('admin/attendance')->group(function () {
+Route::middleware(['web', 'auth:web,admin'])->controller(AttendanceController::class)->prefix('admin/attendance')->group(function () {
     Route::get('/', 'dashboard')->name('admin.attendance.dashboard');
     Route::post('/clock-in', 'clockIn')->name('admin.attendance.clockIn');
     Route::post('/clock-out', 'clockOut')->name('admin.attendance.clockOut');
-    
+
     // User Attendance
     Route::get('/my-daily', 'myDaily')->name('admin.attendance.myDaily');
     Route::get('/my-monthly', 'myMonthly')->name('admin.attendance.myMonthly');
@@ -253,7 +271,7 @@ Route::middleware(['web', 'auth:web,admin'])->controller(App\Http\Controllers\At
 });
 
 // Consolidated Settings
-Route::middleware(['web', 'auth:web,admin'])->controller(App\Http\Controllers\SettingsController::class)->prefix('admin/settings')->group(function () {
+Route::middleware(['web', 'auth:web,admin'])->controller(SettingsController::class)->prefix('admin/settings')->group(function () {
     Route::get('/general', 'general')->name('admin.settings.general')->middleware('permission:settings.view');
     Route::get('/hr', 'hrSettings')->name('admin.hr.settings')->middleware('permission:settings.view|hr.view|hr.manage');
     Route::get('/statuses', 'statuses')->name('admin.settings.statuses')->middleware('permission:settings.view');
@@ -303,11 +321,11 @@ Route::get('/firebase-messaging-sw.js', function () {
 
 // Dynamic PWA Manifest Route
 Route::get('/manifest.json', function () {
-    $settings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+    $settings = Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
     $appName = $settings['app_name'] ?? 'TeamTasker';
     $appLogo = $settings['app_logo'] ?? null;
 
-    $iconUrl = ($appLogo && \Illuminate\Support\Facades\Storage::disk('public')->exists($appLogo))
+    $iconUrl = ($appLogo && Storage::disk('public')->exists($appLogo))
         ? asset('storage/'.$appLogo)
         : asset('icons/icon-192x192.png');
 

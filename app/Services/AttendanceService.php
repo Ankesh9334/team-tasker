@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Notifications\AttendanceNotification;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -483,7 +482,7 @@ class AttendanceService
             ->when($userId, function ($q) use ($userId) {
                 if (is_array($userId)) {
                     $cleanIds = array_filter($userId);
-                    if (!empty($cleanIds)) {
+                    if (! empty($cleanIds)) {
                         $q->whereIn('id', $cleanIds);
                     }
                 } else {
@@ -595,7 +594,7 @@ class AttendanceService
     {
         if (is_array($userId)) {
             $cleanIds = array_values(array_filter($userId));
-        } elseif (!empty($userId)) {
+        } elseif (! empty($userId)) {
             $cleanIds = [(int) $userId];
         } else {
             $cleanIds = [];
@@ -608,7 +607,7 @@ class AttendanceService
         $endDate = Carbon::parse("{$month}-01", config('app.timezone'))->endOfMonth()->format('Y-m-d');
 
         $usersQuery = User::query()
-            ->when(!empty($cleanIds), function ($q) use ($cleanIds) {
+            ->when(! empty($cleanIds), function ($q) use ($cleanIds) {
                 $q->whereIn('id', $cleanIds);
             })
             ->when($search, function ($q) use ($search) {

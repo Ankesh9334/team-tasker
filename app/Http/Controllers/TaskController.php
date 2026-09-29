@@ -45,10 +45,10 @@ class TaskController extends Controller
 
         // Filter by user(s)
         $filterUser = $request->input('user_id');
-        if (!empty($filterUser)) {
+        if (! empty($filterUser)) {
             if (is_array($filterUser)) {
                 $cleanUserIds = array_values(array_filter(array_map('intval', $filterUser)));
-                if (!empty($cleanUserIds)) {
+                if (! empty($cleanUserIds)) {
                     $query->whereIn('user_id', $cleanUserIds);
                 }
             } else {
@@ -60,9 +60,9 @@ class TaskController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('note', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
-                    ->orWhereHas('task', fn($tq) => $tq->where('title', 'like', "%{$search}%"))
-                    ->orWhereHas('project', fn($pq) => $pq->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                    ->orWhereHas('task', fn ($tq) => $tq->where('title', 'like', "%{$search}%"))
+                    ->orWhereHas('project', fn ($pq) => $pq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -335,7 +335,7 @@ class TaskController extends Controller
         $attendanceService = app(\App\Services\AttendanceService::class);
         $todayStr = $attendanceService->today()->format('Y-m-d');
         $attendanceStats = $isAdmin ? $attendanceService->getDailyStats($todayStr) : null;
-        
+
         $currentUser = $viewUser ?: Auth::user();
         $userAttendanceToday = \App\Models\Attendance::where('user_id', $currentUser->id)
             ->where(function ($q) use ($todayStr) {
@@ -475,7 +475,7 @@ class TaskController extends Controller
             $parentTasksQuery->where('project_id', $selectedProjectId);
         }
         $parentTasks = $parentTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
-        if ($selectedParentId && !$parentTasks->contains('id', $selectedParentId)) {
+        if ($selectedParentId && ! $parentTasks->contains('id', $selectedParentId)) {
             $currentParent = Task::select('id', 'title')->find($selectedParentId);
             if ($currentParent) {
                 $parentTasks->prepend($currentParent);
@@ -642,7 +642,7 @@ class TaskController extends Controller
                 $q->where(function ($sq) {
                     $sq->whereNull('role_id')->orWhere('role_id', '!=', 3);
                 });
-                if (!empty($selectedUserIds)) {
+                if (! empty($selectedUserIds)) {
                     $q->orWhereIn('id', $selectedUserIds);
                 }
             })
@@ -659,7 +659,7 @@ class TaskController extends Controller
             $parentTasksQuery->where('project_id', $task->project_id);
         }
         $parentTasks = $parentTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
-        if ($task->parent_id && !$parentTasks->contains('id', $task->parent_id)) {
+        if ($task->parent_id && ! $parentTasks->contains('id', $task->parent_id)) {
             $currentParent = Task::select('id', 'title')->find($task->parent_id);
             if ($currentParent) {
                 $parentTasks->prepend($currentParent);
@@ -673,9 +673,9 @@ class TaskController extends Controller
             $allTasksQuery->where('project_id', $task->project_id);
         }
         $allTasks = $allTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
-        if (!empty($depIds)) {
+        if (! empty($depIds)) {
             $missingDepIds = array_diff($depIds, $allTasks->pluck('id')->toArray());
-            if (!empty($missingDepIds)) {
+            if (! empty($missingDepIds)) {
                 $missingTasks = Task::whereIn('id', $missingDepIds)->select('id', 'title')->get();
                 $allTasks = $allTasks->concat($missingTasks);
             }

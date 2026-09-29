@@ -953,9 +953,10 @@ class AttendanceFeatureTest extends TestCase
         $response->assertStatus(200);
         $response->assertViewHas('users', function ($users) use ($otherUser, $thirdUser) {
             $ids = $users->pluck('id')->toArray();
-            return in_array($this->normalUser->id, $ids) 
-                && in_array($otherUser->id, $ids) 
-                && !in_array($thirdUser->id, $ids);
+
+            return in_array($this->normalUser->id, $ids)
+                && in_array($otherUser->id, $ids)
+                && ! in_array($thirdUser->id, $ids);
         });
     }
 
@@ -1007,7 +1008,7 @@ class AttendanceFeatureTest extends TestCase
         // 1. Total Users (no approval_status): sees all
         $resAll = $this->get(route('admin.attendance.daily', ['date' => $today, 'search' => 'CardTest', 'per_page' => 100]));
         $resAll->assertStatus(200);
-        $resAll->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userApproved->id) 
+        $resAll->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userApproved->id)
             && $users->pluck('id')->contains($userPending->id)
             && $users->pluck('id')->contains($userRejected->id)
             && $users->pluck('id')->contains($userNotSubmitted->id));
@@ -1015,41 +1016,41 @@ class AttendanceFeatureTest extends TestCase
         // 2. Submitted: sees approved, pending, rejected, but not not_submitted
         $resSubmitted = $this->get(route('admin.attendance.daily', ['date' => $today, 'approval_status' => 'submitted', 'search' => 'CardTest', 'per_page' => 100]));
         $resSubmitted->assertStatus(200);
-        $resSubmitted->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userApproved->id) 
+        $resSubmitted->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userApproved->id)
             && $users->pluck('id')->contains($userPending->id)
             && $users->pluck('id')->contains($userRejected->id)
-            && !$users->pluck('id')->contains($userNotSubmitted->id));
+            && ! $users->pluck('id')->contains($userNotSubmitted->id));
 
         // 3. Pending: sees pending only
         $resPending = $this->get(route('admin.attendance.daily', ['date' => $today, 'approval_status' => 'pending', 'search' => 'CardTest', 'per_page' => 100]));
         $resPending->assertStatus(200);
-        $resPending->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userPending->id)
-            && !$users->pluck('id')->contains($userApproved->id)
-            && !$users->pluck('id')->contains($userRejected->id)
-            && !$users->pluck('id')->contains($userNotSubmitted->id));
+        $resPending->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userPending->id)
+            && ! $users->pluck('id')->contains($userApproved->id)
+            && ! $users->pluck('id')->contains($userRejected->id)
+            && ! $users->pluck('id')->contains($userNotSubmitted->id));
 
         // 4. Approved: sees approved only
         $resApproved = $this->get(route('admin.attendance.daily', ['date' => $today, 'approval_status' => 'approved', 'search' => 'CardTest', 'per_page' => 100]));
         $resApproved->assertStatus(200);
-        $resApproved->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userApproved->id)
-            && !$users->pluck('id')->contains($userPending->id)
-            && !$users->pluck('id')->contains($userRejected->id)
-            && !$users->pluck('id')->contains($userNotSubmitted->id));
+        $resApproved->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userApproved->id)
+            && ! $users->pluck('id')->contains($userPending->id)
+            && ! $users->pluck('id')->contains($userRejected->id)
+            && ! $users->pluck('id')->contains($userNotSubmitted->id));
 
         // 5. Rejected: sees rejected only
         $resRejected = $this->get(route('admin.attendance.daily', ['date' => $today, 'approval_status' => 'rejected', 'search' => 'CardTest', 'per_page' => 100]));
         $resRejected->assertStatus(200);
-        $resRejected->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userRejected->id)
-            && !$users->pluck('id')->contains($userApproved->id)
-            && !$users->pluck('id')->contains($userPending->id)
-            && !$users->pluck('id')->contains($userNotSubmitted->id));
+        $resRejected->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userRejected->id)
+            && ! $users->pluck('id')->contains($userApproved->id)
+            && ! $users->pluck('id')->contains($userPending->id)
+            && ! $users->pluck('id')->contains($userNotSubmitted->id));
 
         // 6. Not Submitted: sees not_submitted only
         $resNotSub = $this->get(route('admin.attendance.daily', ['date' => $today, 'approval_status' => 'not_submitted', 'search' => 'CardTest', 'per_page' => 100]));
         $resNotSub->assertStatus(200);
-        $resNotSub->assertViewHas('users', fn($users) => $users->pluck('id')->contains($userNotSubmitted->id)
-            && !$users->pluck('id')->contains($userApproved->id)
-            && !$users->pluck('id')->contains($userPending->id)
-            && !$users->pluck('id')->contains($userRejected->id));
+        $resNotSub->assertViewHas('users', fn ($users) => $users->pluck('id')->contains($userNotSubmitted->id)
+            && ! $users->pluck('id')->contains($userApproved->id)
+            && ! $users->pluck('id')->contains($userPending->id)
+            && ! $users->pluck('id')->contains($userRejected->id));
     }
 }

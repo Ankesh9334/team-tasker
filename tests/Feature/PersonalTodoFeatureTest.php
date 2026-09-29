@@ -14,7 +14,9 @@ class PersonalTodoFeatureTest extends TestCase
     use DatabaseTransactions;
 
     protected User $adminUser;
+
     protected User $staffUser;
+
     protected User $regularUser;
 
     protected function setUp(): void

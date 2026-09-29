@@ -36,7 +36,7 @@ class TicketController extends Controller
         if ($request->filled('assigned_to')) {
             $assignedTo = $request->assigned_to;
             $ids = is_array($assignedTo) ? array_filter($assignedTo) : [$assignedTo];
-            if (!empty($ids)) {
+            if (! empty($ids)) {
                 $query->whereIn('assigned_to', $ids);
             }
         }

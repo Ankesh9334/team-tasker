@@ -263,7 +263,7 @@ class AttendanceController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role?->name ?? 'Employee',
-                'profile_image' => $user->profile_image ? asset('storage/' . $user->profile_image) : null,
+                'profile_image' => $user->profile_image ? asset('storage/'.$user->profile_image) : null,
             ],
             'date' => Carbon::parse($date)->format('l, d F Y'),
             'date_raw' => $date,
@@ -315,9 +315,9 @@ class AttendanceController extends Controller
         if ($search) {
             $timeLogsQuery->where(function ($q) use ($search) {
                 $q->where('description', 'like', "%{$search}%")
-                  ->orWhereHas('task', function ($tq) use ($search) {
-                      $tq->where('title', 'like', "%{$search}%");
-                  });
+                    ->orWhereHas('task', function ($tq) use ($search) {
+                        $tq->where('title', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -375,7 +375,7 @@ class AttendanceController extends Controller
         $selectedUser = null;
         $selectedUserCalendar = [];
         $selectedUserStats = null;
-        if ($selectedUserId && !is_array($selectedUserId)) {
+        if ($selectedUserId && ! is_array($selectedUserId)) {
             $selectedUser = User::find($selectedUserId);
             if ($selectedUser) {
                 $selectedUserStats = $this->attendanceService->getMonthlyUserStats($selectedUser, $month);
@@ -413,7 +413,7 @@ class AttendanceController extends Controller
         $query = Attendance::where('user_id', $user->id)
             ->where(function ($q) use ($startDate, $endDate) {
                 $q->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-                  ->orWhereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+                    ->orWhereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
             });
 
         if ($status) {
@@ -427,8 +427,8 @@ class AttendanceController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('remarks', 'like', "%{$search}%")
-                  ->orWhere('attendance_date', 'like', "%{$search}%")
-                  ->orWhere('date', 'like', "%{$search}%");
+                    ->orWhere('attendance_date', 'like', "%{$search}%")
+                    ->orWhere('date', 'like', "%{$search}%");
             });
         }
 
@@ -544,6 +544,7 @@ class AttendanceController extends Controller
 
             if ($attendance->isRejected()) {
                 $this->attendanceService->resubmitAttendance($attendance, $user, $remarks);
+
                 return redirect()->back()->with('success', 'Corrected daily work report resubmitted successfully for Super Admin approval.');
             }
 
@@ -634,8 +635,9 @@ class AttendanceController extends Controller
 
         $attendanceIds = $request->input('attendance_ids', []);
         $userIds = $request->input('ids', []);
-        if (empty($attendanceIds) && !empty($userIds)) {
+        if (empty($attendanceIds) && ! empty($userIds)) {
             $request->merge(['action' => 'approve']);
+
             return $this->bulkAction($request);
         }
 
@@ -1056,9 +1058,9 @@ class AttendanceController extends Controller
             ->when(! $isManager, function ($query) {
                 return $query->where('user_id', Auth::id());
             })
-            ->when($isManager && !empty($userIds), function ($query) use ($userIds) {
+            ->when($isManager && ! empty($userIds), function ($query) use ($userIds) {
                 $ids = is_array($userIds) ? array_filter($userIds) : [$userIds];
-                if (!empty($ids)) {
+                if (! empty($ids)) {
                     $query->whereIn('user_id', $ids);
                 }
             })
@@ -1163,7 +1165,7 @@ class AttendanceController extends Controller
             ->update([
                 'status' => $action,
                 'action_by' => Auth::id(),
-                'action_notes' => 'Bulk ' . strtolower($action),
+                'action_notes' => 'Bulk '.strtolower($action),
             ]);
 
         return back()->with('success', "{$count} request(s) {$action} successfully.");

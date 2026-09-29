@@ -14,6 +14,7 @@ class StatusSettingsFeatureTest extends TestCase
     use DatabaseTransactions;
 
     protected User $superAdmin;
+
     protected User $staffUser;
 
     protected function setUp(): void
