@@ -11,6 +11,7 @@ class TicketReply extends Model
         'user_id',
         'client_id',
         'email_source',
+        'message_id',
         'body',
         'type',
         'attachments',

@@ -15,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermissions::class,
         ]);
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/email/inbound',
+            'upload-chunk',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

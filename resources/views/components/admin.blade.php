@@ -1151,10 +1151,8 @@
             @if (Auth::user()->hasPermission('tasks.view|tasks.create|tasks.edit|tasks.my_tasks|tasks.todo|tasks.activity|tasks.board|tasks.calendar|tasks.gantt') || Auth::user()->hasRole('super-admin'))
                 @php
                     $isTasksActive = (request()->is('admin/tasks*') && !request()->is('admin/tasks/dashboard')) 
-                                  || request()->is('admin/todos*') 
-                                  || request()->routeIs('index', 'create', 'edit', 'details', 'update', 'delete', 'tasks.*', 'admin.todos.*');
-                    $isMyTasksActive = request()->routeIs('index', 'create', 'edit', 'details', 'update', 'delete') 
-                                    || (request()->is('admin/tasks') || request()->is('admin/tasks/create') || request()->is('admin/tasks/edit/*') || request()->is('admin/tasks/details/*'));
+                                  || request()->is('admin/todos*');
+                    $isMyTasksActive = request()->is('admin/tasks') || request()->is('admin/tasks/create') || request()->is('admin/tasks/edit/*') || request()->is('admin/tasks/details/*');
                 @endphp
                 <div class="nav-item">
                     <a href="javascript:void(0)"
@@ -1232,10 +1230,40 @@
             @endif
 
             @if (Auth::user()->hasPermission('clients.view') || Auth::user()->hasRole('super-admin'))
-                <a href="{{ route('admin.clients.index') }}"
-                    class="nav-link-premium {{ request()->routeIs('admin.clients.*') || request()->is('admin/clients*') ? 'active' : '' }}">
-                    <i class="fas fa-user-tie"></i> Clients
+            @php
+                $isClientActive = request()->routeIs('admin.clients.*');
+            @endphp
+            <div class="nav-item">
+                <a href="javascript:void(0)"
+                    class="nav-link-premium nav-dropdown {{ $isClientActive ? 'active' : '' }}"
+                    onclick="toggleSubmenu(this)">
+                    <i class="fas fa-user-tie"></i>
+                    <span>Clients</span>
+                    <i class="fas fa-chevron-right ms-auto toggle-icon-premium {{ $isClientActive ? 'rotate' : '' }}"></i>
                 </a>
+                <div class="nav-submenu-premium {{ $isClientActive ? 'show' : '' }}">
+                    <a href="{{ route('admin.clients.index') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.index') || request()->routeIs('admin.clients.show') || request()->routeIs('admin.clients.create') || request()->routeIs('admin.clients.edit') ? 'active' : '' }}">
+                        <i class="fas fa-address-book"></i> All Clients
+                    </a>
+                    <a href="{{ route('admin.clients.imports.index') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.imports.*') ? 'active' : '' }}">
+                        <i class="fas fa-file-import"></i> Import CSV
+                    </a>
+                    <a href="{{ route('admin.clients.email-templates.index') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.email-templates.*') ? 'active' : '' }}">
+                        <i class="fas fa-envelope-open-text"></i> Email Templates
+                    </a>
+                    <a href="{{ route('admin.clients.emails.compose') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.emails.compose') ? 'active' : '' }}">
+                        <i class="fas fa-paper-plane"></i> Compose Email
+                    </a>
+                    <a href="{{ route('admin.clients.emails.queue') }}"
+                        class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.emails.queue') || request()->routeIs('admin.clients.emails.show') ? 'active' : '' }}">
+                        <i class="fas fa-inbox"></i> Email Queue
+                    </a>
+                </div>
+            </div>
             @endif
 
             @if (Auth::user()->hasPermission('attendance.view') || Auth::user()->hasPermission('attendance.punch') || Auth::user()->hasPermission('attendance.daily') || Auth::user()->hasPermission('attendance.monthly') || Auth::user()->hasPermission('attendance.dashboard_overview') || Auth::user()->hasPermission('attendance.settings'))

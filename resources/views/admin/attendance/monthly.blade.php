@@ -233,50 +233,38 @@
     <!-- Team Summary Table -->
     <div class="data-grid-wrapper mb-5">
         <div class="data-grid-top">
-            <form id="monthlyFilterForm" action="{{ route('admin.attendance.monthly') }}" method="GET" class="d-flex align-items-center gap-2 flex-wrap flex-grow-1">
-                <div class="data-grid-search" style="min-width: 200px;">
-                    <i class="fas fa-search" onclick="document.getElementById('monthlyFilterForm').submit()" style="cursor: pointer;"></i>
-                    <input type="text" name="search" placeholder="Search employee..." value="{{ request('search') }}" onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.form.submit(); }">
-                </div>
-
-                <div style="min-width: 190px;">
-                    <x-select name="user_id" placeholder="All Employees" :selected="request('user_id')" onchange="document.getElementById('monthlyFilterForm').submit()">
-                        <option value="">All Employees</option>
-                        @foreach($allUsers as $u)
-                            <option value="{{ $u->id }}" {{ request('user_id') == $u->id ? 'selected' : '' }}>{{ $u->name }}</option>
-                        @endforeach
-                    </x-select>
-                </div>
-
-                <div style="min-width: 170px;">
-                    <x-select name="status" placeholder="All Records" :selected="request('status')" onchange="document.getElementById('monthlyFilterForm').submit()">
-                        <option value="">All Records</option>
-                        <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending Approvals</option>
-                        <option value="absent" {{ request('status') === 'absent' ? 'selected' : '' }}>Has Absences</option>
-                        <option value="half_day" {{ request('status') === 'half_day' ? 'selected' : '' }}>Has Half Days</option>
-                        <option value="present" {{ request('status') === 'present' ? 'selected' : '' }}>Has Present Days</option>
-                    </x-select>
-                </div>
-
-                <div class="d-flex align-items-center gap-2">
-                    <input type="month" name="month" value="{{ $month }}" class="form-premium-control form-control-sm" style="width: 155px; padding: 6px 10px;" onchange="document.getElementById('monthlyFilterForm').submit()">
-                    <a href="{{ route('admin.attendance.monthly', array_merge(request()->except(['month', 'page']), ['month' => date('Y-m')])) }}" 
-                       class="btn-premium btn-premium-secondary btn-sm {{ $month == date('Y-m') ? 'active' : '' }}" 
-                       title="View Current Month">
-                        This Month
+            <div class="data-grid-search" style="min-width: 200px;">
+                <i class="fas fa-search" onclick="document.getElementById('monthlyFilterForm').submit()" style="cursor: pointer;"></i>
+                <input type="text" name="search" form="monthlyFilterForm" placeholder="Search employee..." value="{{ request('search') }}" onkeydown="if(event.key === 'Enter') { event.preventDefault(); document.getElementById('monthlyFilterForm').submit(); }">
+                @if(request('search'))
+                    <a href="{{ route('admin.attendance.monthly', array_merge(request()->except(['search', 'page']))) }}" 
+                       class="text-low ms-2 text-decoration-none small" title="Clear search">
+                        <i class="fas fa-times-circle"></i>
                     </a>
-                </div>
+                @endif
+            </div>
 
-                @if(request('search') || request('user_id') || request('status') || ($month !== date('Y-m') && request()->has('month')))
-                    <a href="{{ route('admin.attendance.monthly') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1" title="Reset all filters">
-                        <i class="fas fa-redo"></i> Reset
-                    </a>
+            {{-- Hidden form for search submission --}}
+            <form id="monthlyFilterForm" action="{{ route('admin.attendance.monthly') }}" method="GET" class="d-none">
+                @if(request('user_id'))
+                    <input type="hidden" name="user_id" value="{{ request('user_id') }}">
+                @endif
+                @if(request('status'))
+                    <input type="hidden" name="status" value="{{ request('status') }}">
+                @endif
+                @if(request('month'))
+                    <input type="hidden" name="month" value="{{ request('month') }}">
                 @endif
             </form>
 
             <div class="data-grid-results">{{ $users->total() }} Employees</div>
 
             <div class="data-grid-actions d-flex align-items-center gap-2">
+                @if(request('search') || request('user_id') || request('status') || ($month !== date('Y-m') && request()->has('month')))
+                    <a href="{{ route('admin.attendance.monthly') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1 text-decoration-none" title="Reset all filters">
+                        <i class="fas fa-redo"></i> Reset
+                    </a>
+                @endif
                 {{ $users->links('components.pagination.premium') }}
             </div>
         </div>
@@ -367,4 +355,74 @@
             </table>
         </div>
     </div>
+
+    <!-- Advanced Filter Slideover for Monthly Attendance -->
+    <div class="filter-slideover" id="filterSlideoverMonthlyAdmin">
+        <form action="{{ route('admin.attendance.monthly') }}" method="GET" class="h-100 d-flex flex-column">
+            @if(request('search'))
+                <input type="hidden" name="search" value="{{ request('search') }}">
+            @endif
+
+            <div class="filter-slideover-header">
+                <h4><i class="fas fa-sliders-h text-low me-2"></i> Filter Monthly Overview</h4>
+                <div class="filter-slideover-close" onclick="document.getElementById('filterSlideoverMonthlyAdmin').classList.remove('show')">
+                    <i class="fas fa-times"></i>
+                </div>
+            </div>
+
+            <div class="filter-slideover-body">
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">EMPLOYEE</label>
+                    <x-select name="user_id" placeholder="All Employees" :selected="request('user_id')">
+                        @foreach($allUsers as $u)
+                            <option value="{{ $u->id }}">{{ $u->name }}</option>
+                        @endforeach
+                    </x-select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">ATTENDANCE STATUS</label>
+                    <x-select name="status" placeholder="All Records" :selected="request('status')">
+                        <option value="pending">Pending Approvals</option>
+                        <option value="absent">Has Absences</option>
+                        <option value="half_day">Has Half Days</option>
+                        <option value="present">Has Present Days</option>
+                    </x-select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">MONTH</label>
+                    <input type="month" name="month" value="{{ $month }}" class="form-premium-control bg-white text-dark border-main w-100">
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <a href="{{ route('admin.attendance.monthly', array_merge(request()->except(['month', 'page']), ['month' => date('Y-m')])) }}" 
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $month == date('Y-m') ? 'active' : '' }}">
+                            This Month
+                        </a>
+                        <a href="{{ route('admin.attendance.monthly', array_merge(request()->except(['month', 'page']), ['month' => date('Y-m', strtotime('-1 month'))])) }}" 
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $month == date('Y-m', strtotime('-1 month')) ? 'active' : '' }}">
+                            Previous Month
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-slideover-footer d-flex gap-2">
+                <a href="{{ route('admin.attendance.monthly') }}" class="btn-premium btn-premium-secondary flex-fill text-center text-decoration-none bg-white text-dark border-main">
+                    Reset
+                </a>
+                <button type="submit" class="btn-premium btn-premium-primary flex-fill justify-content-center">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
+    @push('scripts')
+    <script>
+        document.addEventListener('openFilterModal', () => {
+            const slideover = document.getElementById('filterSlideoverMonthlyAdmin');
+            if (slideover) slideover.classList.add('show');
+        });
+    </script>
+    @endpush
 </x-admin>

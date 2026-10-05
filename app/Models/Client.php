@@ -9,9 +9,22 @@ class Client extends Authenticatable
 {
     use Notifiable;
 
+    public const TYPES = [
+        'Ecommerce',
+        'ERP',
+        'Real Estate',
+        'Fintech',
+        'Education',
+        'Healthcare',
+        'SaaS',
+        'Marketplace',
+        'Other',
+    ];
+
     protected $fillable = [
-        'name', 'email', 'password', 'phone', 'company',
-        'profile_image', 'fcm_token', 'is_approved', 'status',
+        'name', 'email', 'password', 'phone', 'company', 'company_name',
+        'website', 'client_type', 'profile_image', 'fcm_token',
+        'is_approved', 'status', 'email_opt_out',
         'otp', 'otp_expires_at', 'email_verified_at',
     ];
 
@@ -23,8 +36,29 @@ class Client extends Authenticatable
         'email_verified_at' => 'datetime',
         'otp_expires_at' => 'datetime',
         'is_approved' => 'boolean',
+        'email_opt_out' => 'boolean',
         'password' => 'hashed',
     ];
+
+    public function getCompanyAttribute($value)
+    {
+        return $value ?: $this->attributes['company_name'] ?? null;
+    }
+
+    public function getCompanyNameAttribute($value)
+    {
+        return $value ?: $this->attributes['company'] ?? null;
+    }
+
+    public function emails()
+    {
+        return $this->hasMany(ClientEmail::class);
+    }
+
+    public function inboundEmails()
+    {
+        return $this->hasMany(InboundEmail::class);
+    }
 
     public function tickets()
     {

@@ -214,54 +214,30 @@
                 @endif
             </div>
 
-            <form id="dashFilterForm" action="{{ route('admin.attendance.dashboard') }}" method="GET" class="d-flex align-items-center gap-2 flex-wrap m-0">
-                @if(request('search'))
-                    <input type="hidden" name="search" value="{{ request('search') }}">
-                @endif
-
-                <div style="min-width: 170px;">
-                    <x-select name="approval_status" placeholder="All Reports" :selected="request('approval_status')" onchange="document.getElementById('dashFilterForm').submit()">
-                        <option value="">All Reports</option>
-                        <option value="submitted" {{ request('approval_status') === 'submitted' ? 'selected' : '' }}>Submitted</option>
-                        <option value="pending" {{ request('approval_status') === 'pending' ? 'selected' : '' }}>Pending Approval</option>
-                        <option value="approved" {{ request('approval_status') === 'approved' ? 'selected' : '' }}>Approved</option>
-                        <option value="rejected" {{ request('approval_status') === 'rejected' ? 'selected' : '' }}>Rejected</option>
-                        <option value="not_submitted" {{ request('approval_status') === 'not_submitted' ? 'selected' : '' }}>Not Submitted</option>
-                    </x-select>
-                </div>
-
-                <div class="d-flex align-items-center gap-2">
-                    <input type="date" name="date" value="{{ $date }}" class="form-premium-control form-control-sm" style="width: 155px; padding: 6px 10px;" onchange="document.getElementById('dashFilterForm').submit()">
-                    
-                    @php
-                        $todayStr = now()->format('Y-m-d');
-                        $yesterdayStr = now()->subDay()->format('Y-m-d');
-                    @endphp
-                    <a href="{{ route('admin.attendance.dashboard', array_merge(request()->except(['date', 'page']), ['date' => $todayStr])) }}" 
-                       class="btn-premium btn-premium-secondary btn-sm {{ $date === $todayStr ? 'active' : '' }}" 
-                       title="View Today">
-                        Today
-                    </a>
-                    <a href="{{ route('admin.attendance.dashboard', array_merge(request()->except(['date', 'page']), ['date' => $yesterdayStr])) }}" 
-                       class="btn-premium btn-premium-secondary btn-sm {{ $date === $yesterdayStr ? 'active' : '' }}" 
-                       title="View Yesterday">
-                        Yesterday
-                    </a>
-                </div>
-
-                @if(request('search') || request('approval_status') || ($date !== now()->format('Y-m-d') && request()->has('date')))
-                    <a href="{{ route('admin.attendance.dashboard') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1" title="Reset all filters">
-                        <i class="fas fa-redo"></i> Reset
-                    </a>
-                @endif
-            </form>
-
             <div class="data-grid-results">{{ $users->total() }} Employees</div>
 
             <div class="data-grid-actions d-flex align-items-center gap-2">
+                @if(request('search') || request('approval_status') || ($date !== now()->format('Y-m-d') && request()->has('date')))
+                    <a href="{{ route('admin.attendance.dashboard') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1 text-decoration-none" title="Reset all filters">
+                        <i class="fas fa-redo"></i> Reset
+                    </a>
+                @endif
                 {{ $users->links('components.pagination.premium') }}
             </div>
         </div>
+
+        {{-- Hidden search form for GET requests --}}
+        <form action="{{ route('admin.attendance.dashboard') }}" method="GET" id="dashFilterForm" class="d-none">
+            @if(request('search'))
+                <input type="hidden" name="search" value="{{ request('search') }}">
+            @endif
+            @if(request('approval_status'))
+                <input type="hidden" name="approval_status" value="{{ request('approval_status') }}">
+            @endif
+            @if(request('date'))
+                <input type="hidden" name="date" value="{{ request('date') }}">
+            @endif
+        </form>
 
         <div class="table-responsive">
             <table class="table data-grid-table align-middle mb-0">
@@ -401,6 +377,63 @@
         </div>
     </div>
 
+    <!-- Advanced Filter Slideover for Dashboard -->
+    <div class="filter-slideover" id="filterSlideoverDashboard">
+        <form action="{{ route('admin.attendance.dashboard') }}" method="GET" class="h-100 d-flex flex-column">
+            @if(request('search'))
+                <input type="hidden" name="search" value="{{ request('search') }}">
+            @endif
+
+            <div class="filter-slideover-header">
+                <h4><i class="fas fa-sliders-h text-low me-2"></i> Filter Attendance</h4>
+                <div class="filter-slideover-close" onclick="document.getElementById('filterSlideoverDashboard').classList.remove('show')">
+                    <i class="fas fa-times"></i>
+                </div>
+            </div>
+
+            <div class="filter-slideover-body">
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">APPROVAL STATUS</label>
+                    <x-select name="approval_status" placeholder="All Reports" :selected="request('approval_status')">
+                        <option value="submitted">Submitted</option>
+                        <option value="pending">Pending Approval</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="not_submitted">Not Submitted</option>
+                    </x-select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">SPECIFIC DATE</label>
+                    <input type="date" name="date" value="{{ $date }}" class="form-premium-control bg-white text-dark border-main w-100">
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        @php
+                            $todayStr = now()->format('Y-m-d');
+                            $yesterdayStr = now()->subDay()->format('Y-m-d');
+                        @endphp
+                        <a href="{{ route('admin.attendance.dashboard', array_merge(request()->except(['date', 'page']), ['date' => $todayStr])) }}" 
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $date === $todayStr ? 'active' : '' }}">
+                            Today
+                        </a>
+                        <a href="{{ route('admin.attendance.dashboard', array_merge(request()->except(['date', 'page']), ['date' => $yesterdayStr])) }}" 
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $date === $yesterdayStr ? 'active' : '' }}">
+                            Yesterday
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-slideover-footer d-flex gap-2">
+                <a href="{{ route('admin.attendance.dashboard') }}" class="btn-premium btn-premium-secondary flex-fill text-center text-decoration-none bg-white text-dark border-main">
+                    Reset
+                </a>
+                <button type="submit" class="btn-premium btn-premium-primary flex-fill justify-content-center">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
     @push('scripts')
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
@@ -500,6 +533,12 @@
                         }
                     });
                 }
+            });
+        </script>
+        <script>
+            document.addEventListener('openFilterModal', () => {
+                const slideover = document.getElementById('filterSlideoverDashboard');
+                if (slideover) slideover.classList.add('show');
             });
         </script>
     @endpush

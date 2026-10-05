@@ -19,6 +19,7 @@ class Ticket extends Model
         'client_id',
         'assigned_to',
         'email_source',
+        'message_id',
         'attachments',
     ];
 

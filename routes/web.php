@@ -15,6 +15,11 @@ use App\Http\Controllers\ChunkUploadController;
 use App\Http\Controllers\TodoController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\AdminClientController;
+use App\Http\Controllers\ClientImportController;
+use App\Http\Controllers\ClientEmailTemplateController;
+use App\Http\Controllers\ClientEmailController;
+use App\Http\Controllers\UnmatchedEmailController;
+use App\Http\Controllers\InboundEmailWebhookController;
 use App\Http\Controllers\EnquiryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -181,13 +186,51 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TeamController::class)-
     });
 
     // Clients
-    Route::controller(AdminClientController::class)->prefix('clients')->group(function () {
+    Route::controller(AdminClientController::class)->prefix('clients')->where(['id' => '[0-9]+'])->group(function () {
         Route::get('/', 'index')->name('admin.clients.index')->middleware('permission:clients.view');
         Route::get('/create', 'create')->name('admin.clients.create')->middleware('permission:clients.create');
+        Route::get('/export/csv', 'export')->name('admin.clients.export')->middleware('permission:clients.view');
         Route::post('/', 'store')->name('admin.clients.store')->middleware('permission:clients.create');
+        Route::get('/{id}', 'show')->name('admin.clients.show')->middleware('permission:clients.view');
         Route::get('/{id}/edit', 'edit')->name('admin.clients.edit')->middleware('permission:clients.edit');
         Route::post('/{id}/update', 'update')->name('admin.clients.update')->middleware('permission:clients.edit');
         Route::delete('/{id}/delete', 'destroy')->name('admin.clients.delete')->middleware('permission:clients.delete');
+    });
+
+    // Client Imports
+    Route::controller(ClientImportController::class)->prefix('clients/imports')->middleware('permission:clients.create')->group(function () {
+        Route::get('/', 'index')->name('admin.clients.imports.index');
+        Route::post('/parse', 'parse')->name('admin.clients.imports.parse');
+        Route::post('/process', 'process')->name('admin.clients.imports.process');
+        Route::get('/history', 'history')->name('admin.clients.imports.history');
+        Route::get('/{id}/errors', 'errors')->name('admin.clients.imports.errors');
+    });
+
+    // Client Email Templates
+    Route::controller(ClientEmailTemplateController::class)->prefix('clients/email-templates')->where(['id' => '[0-9]+'])->middleware('permission:clients.view')->group(function () {
+        Route::get('/', 'index')->name('admin.clients.email-templates.index');
+        Route::get('/create', 'create')->name('admin.clients.email-templates.create');
+        Route::post('/', 'store')->name('admin.clients.email-templates.store');
+        Route::post('/preview', 'preview')->name('admin.clients.email-templates.preview');
+        Route::get('/{id}/edit', 'edit')->name('admin.clients.email-templates.edit');
+        Route::post('/{id}/update', 'update')->name('admin.clients.email-templates.update');
+        Route::delete('/{id}/delete', 'destroy')->name('admin.clients.email-templates.delete');
+    });
+
+    // Client Emails (Compose & Queue)
+    Route::controller(ClientEmailController::class)->prefix('clients/emails')->middleware('permission:clients.view')->group(function () {
+        Route::get('/compose', 'compose')->name('admin.clients.emails.compose');
+        Route::post('/send', 'send')->name('admin.clients.emails.send');
+        Route::get('/queue', 'index')->name('admin.clients.emails.queue');
+        Route::get('/{id}', 'show')->name('admin.clients.emails.show');
+        Route::post('/{id}/retry', 'retry')->name('admin.clients.emails.retry');
+    });
+
+    // Unmatched Emails
+    Route::controller(UnmatchedEmailController::class)->prefix('clients/unmatched-emails')->middleware('permission:clients.view')->group(function () {
+        Route::get('/', 'index')->name('admin.clients.unmatched.index');
+        Route::post('/{id}/assign', 'assign')->name('admin.clients.unmatched.assign');
+        Route::post('/{id}/ignore', 'ignore')->name('admin.clients.unmatched.ignore');
     });
 
     // Meetings & Calls
@@ -311,6 +354,9 @@ Route::middleware(['web', 'auth:web,admin'])->controller(TaskLogController::clas
     Route::post('/tasks/{id}/stop-timer', 'stopTime')->name('tasks.stop_timer')->middleware('permission:tasks.view');
     Route::post('/tasks/{id}/progress', 'updateProgress')->name('tasks.progress')->middleware('permission:tasks.view');
 });
+
+// Email Inbound Webhook (External API)
+Route::post('/webhooks/email/inbound', [InboundEmailWebhookController::class, 'handle'])->name('webhooks.email.inbound');
 
 // Dynamic Service Worker Route
 Route::get('/firebase-messaging-sw.js', function () {

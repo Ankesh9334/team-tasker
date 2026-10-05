@@ -199,52 +199,14 @@
                 @endif
             </div>
 
-            <form id="monthlyFilterForm" action="{{ route('admin.attendance.myMonthly') }}" method="GET" class="d-flex align-items-center gap-2 flex-wrap m-0">
-                @if(request('search'))
-                    <input type="hidden" name="search" value="{{ request('search') }}">
-                @endif
-
-                <div style="min-width: 160px;">
-                    <x-select name="status" placeholder="All Records" :selected="request('status')" onchange="document.getElementById('monthlyFilterForm').submit()">
-                        <option value="">All Records</option>
-                        <option value="present" {{ request('status') === 'present' ? 'selected' : '' }}>Present</option>
-                        <option value="half_day" {{ request('status') === 'half_day' ? 'selected' : '' }}>Half Day</option>
-                        <option value="absent" {{ request('status') === 'absent' ? 'selected' : '' }}>Absent</option>
-                        <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending Approval</option>
-                        <option value="approved" {{ request('status') === 'approved' ? 'selected' : '' }}>Approved</option>
-                        <option value="rejected" {{ request('status') === 'rejected' ? 'selected' : '' }}>Rejected</option>
-                    </x-select>
-                </div>
-
-                <div class="d-flex align-items-center gap-2">
-                    <input type="month" name="month" value="{{ $month }}" class="form-premium-control form-control-sm" style="width: 155px; padding: 6px 10px;" onchange="document.getElementById('monthlyFilterForm').submit()">
-                    
-                    @php
-                        $currentMonthStr = now()->format('Y-m');
-                        $prevMonthStr = now()->subMonth()->format('Y-m');
-                    @endphp
-                    <a href="{{ route('admin.attendance.myMonthly', array_merge(request()->except(['month', 'page']), ['month' => $currentMonthStr])) }}" 
-                       class="btn-premium btn-premium-secondary btn-sm {{ $month === $currentMonthStr ? 'active' : '' }}" 
-                       title="View Current Month">
-                        This Month
-                    </a>
-                    <a href="{{ route('admin.attendance.myMonthly', array_merge(request()->except(['month', 'page']), ['month' => $prevMonthStr])) }}" 
-                       class="btn-premium btn-premium-secondary btn-sm {{ $month === $prevMonthStr ? 'active' : '' }}" 
-                       title="View Previous Month">
-                        Previous Month
-                    </a>
-                </div>
-
-                @if(request('search') || request('status') || ($month !== now()->format('Y-m') && request()->has('month')))
-                    <a href="{{ route('admin.attendance.myMonthly') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1" title="Reset all filters">
-                        <i class="fas fa-redo"></i> Reset
-                    </a>
-                @endif
-            </form>
-
             <div class="data-grid-results">{{ $records->total() }} Records</div>
 
             <div class="data-grid-actions d-flex align-items-center gap-2">
+                @if(request('search') || request('status') || ($month !== now()->format('Y-m') && request()->has('month')))
+                    <a href="{{ route('admin.attendance.myMonthly') }}" class="btn-premium btn-premium-secondary btn-sm d-flex align-items-center gap-1 text-decoration-none" title="Reset all filters">
+                        <i class="fas fa-redo"></i> Reset
+                    </a>
+                @endif
                 {{ $records->links('components.pagination.premium') }}
             </div>
         </div>
@@ -343,4 +305,71 @@
             </table>
         </div>
     </div>
+
+    <!-- Advanced Filter Slideover for Monthly Attendance -->
+    <div class="filter-slideover" id="filterSlideoverMonthly">
+        <form action="{{ route('admin.attendance.myMonthly') }}" method="GET" class="h-100 d-flex flex-column">
+            @if(request('search'))
+                <input type="hidden" name="search" value="{{ request('search') }}">
+            @endif
+
+            <div class="filter-slideover-header">
+                <h4><i class="fas fa-sliders-h text-low me-2"></i> Filter Monthly Records</h4>
+                <div class="filter-slideover-close" onclick="document.getElementById('filterSlideoverMonthly').classList.remove('show')">
+                    <i class="fas fa-times"></i>
+                </div>
+            </div>
+
+            <div class="filter-slideover-body">
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">ATTENDANCE STATUS</label>
+                    <x-select name="status" placeholder="All Records" :selected="request('status')">
+                        <option value="present">Present</option>
+                        <option value="half_day">Half Day</option>
+                        <option value="absent">Absent</option>
+                        <option value="pending">Pending Approval</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </x-select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="heading-label d-block mb-2 text-low">MONTH</label>
+                    <input type="month" name="month" value="{{ $month }}" class="form-premium-control bg-white text-dark border-main w-100">
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        @php
+                            $currentMonthStr = now()->format('Y-m');
+                            $prevMonthStr = now()->subMonth()->format('Y-m');
+                        @endphp
+                        <a href="{{ route('admin.attendance.myMonthly', array_merge(request()->except(['month', 'page']), ['month' => $currentMonthStr])) }}"
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $month === $currentMonthStr ? 'active' : '' }}">
+                            This Month
+                        </a>
+                        <a href="{{ route('admin.attendance.myMonthly', array_merge(request()->except(['month', 'page']), ['month' => $prevMonthStr])) }}"
+                           class="btn-premium btn-premium-secondary btn-sm flex-fill text-center text-decoration-none {{ $month === $prevMonthStr ? 'active' : '' }}">
+                            Previous Month
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-slideover-footer d-flex gap-2">
+                <a href="{{ route('admin.attendance.myMonthly') }}" class="btn-premium btn-premium-secondary flex-fill text-center text-decoration-none bg-white text-dark border-main">
+                    Reset
+                </a>
+                <button type="submit" class="btn-premium btn-premium-primary flex-fill justify-content-center">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
+    @push('scripts')
+    <script>
+        document.addEventListener('openFilterModal', () => {
+            const slideover = document.getElementById('filterSlideoverMonthly');
+            if (slideover) slideover.classList.add('show');
+        });
+    </script>
+    @endpush
 </x-admin>
