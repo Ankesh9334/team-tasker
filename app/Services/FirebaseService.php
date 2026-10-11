@@ -2,75 +2,52 @@
 
 namespace App\Services;
 
+use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class FirebaseService
 {
-    protected $serverKey;
-    protected $url = 'https://fcm.googleapis.com/fcm/send';
+    protected $projectId;
 
     public function __construct()
     {
-        $this->serverKey = config('services.firebase.server_key') ?: env('FCM_SERVER_KEY');
+        $this->projectId = config('services.firebase.project_id');
     }
 
-    /**
-     * Send a push notification to a specific FCM token.
-     *
-     * @param string $token
-     * @param string $title
-     * @param string $body
-     * @param array $extraData
-     * @return bool
-     */
-    public function sendNotification($token, $title, $body, array $extraData = [])
+    public function getAccessToken()
     {
-        if (!$this->serverKey) {
-            Log::error('FirebaseService: FCM_SERVER_KEY is not configured.');
-            return false;
-        }
+        $credentials = new ServiceAccountCredentials(
+            ['https://www.googleapis.com/auth/firebase.messaging'],
+            storage_path('app/firebase/firebase-service-account.json')
+        );
 
-        if (!$token) {
-            return false;
-        }
+        $token = $credentials->fetchAuthToken();
 
-        $payload = [
-            'to' => $token,
+        return $token['access_token'];
+    }
+
+    public function sendNotification($deviceToken, $title, $body, $extraData = [])
+    {
+        $accessToken = $this->getAccessToken();
+
+        $url = "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send";
+
+        $message = [
+            'token' => $deviceToken,
             'notification' => [
                 'title' => $title,
                 'body' => $body,
-                'sound' => 'default',
             ],
-            'data' => array_merge([
-                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
-            ], $extraData),
-            'priority' => 'high',
         ];
 
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'key=' . $this->serverKey,
-                'Content-Type' => 'application/json',
-            ])->post($this->url, $payload);
-
-            if ($response->successful()) {
-                Log::info('FirebaseService Success: ' . $response->body());
-                return true;
-            }
-
-            $errorMessage = $response->body();
-            if ($response->status() == 404) {
-                $errorMessage = '404 Not Found. This usually means the FCM Legacy API is disabled in the Firebase Console or the URL is incorrect for this project. Google has deprecated Legacy FCM; consider migrating to HTTP v1.';
-            } elseif ($response->status() == 401) {
-                $errorMessage = '401 Unauthorized. The FCM_SERVER_KEY is invalid.';
-            }
-
-            Log::error('FirebaseService Error (Status ' . $response->status() . '): ' . $errorMessage);
-            return false;
-        } catch (\Exception $e) {
-            Log::error('FirebaseService Exception: ' . $e->getMessage());
-            return false;
+        if (! empty($extraData)) {
+            $message['data'] = $extraData;
         }
+
+        return Http::withToken($accessToken)
+            ->post($url, [
+                'message' => $message,
+            ])
+            ->json();
     }
 }

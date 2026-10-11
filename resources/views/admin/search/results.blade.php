@@ -155,7 +155,7 @@
                         <div class="avatar-premium mx-auto mb-3"
                             style="width: 56px; height: 56px; font-size: 1.3rem; border: 2px solid var(--border-main);">
                             @if ($user->profile_image)
-                                <img src="{{ asset('storage/' . $user->profile_image) }}" alt=""
+                                <img alt="team-tasker" src="{{ asset('storage/' . $user->profile_image) }}" alt=""
                                     style="width: 100%; height: 100%; object-fit: cover;">
                             @else
                                 {{ substr($user->name, 0, 1) }}

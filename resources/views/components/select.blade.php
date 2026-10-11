@@ -4,6 +4,7 @@
     'options' => [],
     'selected' => null,
     'class' => '',
+    'clearable' => false,
 ])
 
 <div class="premium-select-wrapper {{ $class }}" wire:ignore x-data="{
@@ -13,9 +14,30 @@
     init() {
         this.instance = new TomSelect(this.$refs.select, {
             create: false,
-            plugins: ['clear_button'],
+            plugins: {{ $clearable ? "['clear_button']" : '[]' }},
             allowEmptyOption: true,
+            placeholder: '{{ $placeholder }}',
             dropdownParent: 'body',
+            maxOptions: 50,
+            onInitialize: function() {
+                const self = this;
+                self.dropdown_content.addEventListener('scroll', function() {
+                    if (this.scrollTop + this.clientHeight >= this.scrollHeight - 10) {
+                        self.settings.maxOptions += 20;
+                        self.refreshOptions(false);
+                    }
+                });
+            },
+            onFocus: function() {
+                if (!this.getValue()) {
+                    this.setTextboxValue('');
+                }
+            },
+            onDropdownOpen: function() {
+                if (!this.getValue()) {
+                    this.setTextboxValue('');
+                }
+            },
             onItemAdd: () => this.instance.setTextboxValue(''),
             onChange: (val) => {
                 this.value = val;
@@ -26,7 +48,7 @@
         if (this.value !== null) {
             this.$watch('value', (val) => {
                 if (this.instance.getValue() !== val) {
-                    this.instance.setValue(val);
+                    this.instance.setValue(val, true);
                 }
             });
         }
@@ -34,7 +56,7 @@
         // Always set initial value if present, but priority to Livewire
         const initialValue = this.value || this.selected;
         if (initialValue !== null && initialValue !== undefined) {
-            this.instance.setValue(initialValue);
+            this.instance.setValue(initialValue, true);
         }
     }
 }">

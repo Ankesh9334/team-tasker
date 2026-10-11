@@ -2,12 +2,13 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
 use App\Models\TaskLog;
+use Livewire\Component;
 
 class TaskActivityTab extends Component
 {
     public $taskId;
+
     public $limit = 15;
 
     public function loadMore()
@@ -19,21 +20,21 @@ class TaskActivityTab extends Component
     {
         $logs = collect();
         $hasMore = false;
-        
+
         if ($this->taskId) {
             $logs = TaskLog::with('user')
                 ->where('task_id', $this->taskId)
                 ->orderBy('created_at', 'desc')
                 ->take($this->limit)
                 ->get();
-            
+
             $totalCount = TaskLog::where('task_id', $this->taskId)->count();
             $hasMore = $totalCount > $this->limit;
         }
 
         return view('livewire.task-activity-tab', [
             'logs' => $logs,
-            'hasMore' => $hasMore
+            'hasMore' => $hasMore,
         ]);
     }
 }

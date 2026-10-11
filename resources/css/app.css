@@ -64,7 +64,28 @@
     --radius-xl: 24px;
 }
 
-[data-theme="light"] {
+[data-theme="dark"],
+[data-bs-theme="dark"] {
+    --bg-main: #0f172a;
+    --bg-surface: rgba(30, 41, 59, 0.7);
+    --bg-sidebar: #1e293b;
+    --bg-input: rgba(255, 255, 255, 0.05);
+
+    --text-high: #f8fafc;
+    --text-medium: #94a3b8;
+    --text-low: #64748b;
+
+    --border-main: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+
+    --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --close-filter: invert(1) grayscale(100%) brightness(200%);
+    --bg-subtle: rgba(15, 23, 42, 0.3);
+}
+
+[data-theme="light"],
+[data-bs-theme="light"] {
     --bg-main: #f1f5f9;
     --bg-surface: rgba(255, 255, 255, 0.8);
     --bg-sidebar: #ffffff;
@@ -84,7 +105,24 @@
     --glass-border: rgba(255, 255, 255, 0.5);
     --close-filter: none;
     --bg-subtle: rgba(241, 245, 249, 0.8);
-    --accent-rgb: 16, 185, 129;
+}
+
+/* Base HTML & Canvas Colors - Immediate Paint */
+html {
+    background-color: var(--bg-main);
+    color: var(--text-high);
+}
+
+html[data-theme="dark"],
+html[data-bs-theme="dark"] {
+    color-scheme: dark;
+    background-color: #0f172a !important;
+}
+
+html[data-theme="light"],
+html[data-bs-theme="light"] {
+    color-scheme: light;
+    background-color: #f1f5f9 !important;
 }
 
 /* --- Global Reset & Base --- */
@@ -94,13 +132,21 @@
 
 body {
     font-family: 'Outfit', sans-serif;
-    background-color: var(--bg-main);
+    background-color: var(--bg-main) !important;
     color: var(--text-high);
     margin: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
-    transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+/* Only animate theme transitions when actively toggled by user */
+html.theme-toggling,
+html.theme-toggling body,
+html.theme-toggling .glass-card,
+html.theme-toggling .layout-header-premium,
+html.theme-toggling .layout-sidebar-premium {
+    transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease !important;
 }
 
 h1,
@@ -799,8 +845,14 @@ select option,
 }
 
 /* --- Tom Select Premium Styles --- */
+.premium-select-wrapper,
+.premium-multiselect-wrapper {
+    width: 100%;
+}
+
 .ts-wrapper {
     position: relative !important;
+    width: 100% !important;
 }
 
 .ts-wrapper.form-premium-control {
@@ -815,15 +867,17 @@ select option,
     border: 1px solid var(--border-main) !important;
     border-radius: var(--radius-md) !important;
     color: var(--text-high) !important;
-    padding: 0.6rem 2.5rem 0.6rem 1rem !important;
+    padding: 0 2rem 0 0.85rem !important;
     transition: all var(--transition-base) !important;
     font-family: 'Outfit', sans-serif !important;
-    font-size: 0.95rem !important;
-    min-height: 42px !important;
-    /* Matched with search input */
+    font-size: 0.85rem !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    /* Exactly matched with search input (38px) */
     display: flex !important;
     align-items: center !important;
     position: relative !important;
+    box-sizing: border-box !important;
 }
 
 /* Dropdown Arrow - SVG chevron on .ts-control (native select style) */
@@ -845,7 +899,24 @@ select option,
     background-image: var(--ts-arrow-bg) !important;
     background-repeat: no-repeat !important;
     background-position: right 0.85rem center !important;
-    background-size: 12px 12px !important;
+    background-size: 11px 11px !important;
+    font-size: 0.85rem !important;
+    box-sizing: border-box !important;
+}
+
+.ts-wrapper.single .ts-control {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    padding: 0 2rem 0 0.85rem !important;
+    line-height: 36px !important;
+    flex-wrap: nowrap !important;
+}
+
+.ts-wrapper.multi .ts-control {
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 3px 2rem 3px 0.5rem !important;
 }
 
 .ts-wrapper.dropdown-active .ts-control {
@@ -897,7 +968,7 @@ select option,
 }
 
 /* Multi-select Tags */
-.ts-control .item {
+.ts-wrapper.multi .ts-control .item {
     background: var(--primary) !important;
     color: #fff !important;
     border-radius: var(--radius-sm) !important;
@@ -909,23 +980,99 @@ select option,
     gap: 5px !important;
 }
 
-.ts-control .item .remove {
+.ts-wrapper.multi .ts-control .item .remove {
     border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
     margin-left: 5px !important;
     padding-left: 5px !important;
     opacity: 0.7 !important;
 }
 
-.ts-control .item .remove:hover {
+.ts-wrapper.multi .ts-control .item .remove:hover {
     background: rgba(255, 255, 255, 0.2) !important;
     opacity: 1 !important;
 }
 
-/* Search Input */
-.ts-wrapper .ts-control input {
+/* Single-select Item (clean text, no badge pill) */
+.ts-wrapper.single .ts-control .item {
+    background: transparent !important;
+    color: var(--text-high) !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    display: inline-block !important;
+    border: none !important;
+    box-shadow: none !important;
+    line-height: 36px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: calc(100% - 1.5rem) !important;
+}
+
+.ts-wrapper.single .ts-control .item .remove {
+    display: none !important;
+}
+
+/* Search Input inside TomSelect */
+.ts-wrapper .ts-control input,
+.ts-control input {
     color: var(--text-high) !important;
     font-family: 'Outfit', sans-serif !important;
+    font-size: 0.85rem !important;
     background: transparent !important;
+    caret-color: var(--text-high) !important;
+    height: 36px !important;
+    line-height: 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* When NOT focused and has items: hide the input so only selected item shows */
+.ts-wrapper.single.has-items:not(.focus):not(.dropdown-active) .ts-control>input {
+    width: 0 !important;
+    min-width: 0 !important;
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* When focused / dropdown active: SHOW the input field so user can search options */
+.ts-wrapper.single.focus .ts-control>input,
+.ts-wrapper.single.dropdown-active .ts-control>input {
+    width: 100% !important;
+    min-width: 60px !important;
+    position: relative !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    cursor: text !important;
+    display: inline-block !important;
+    flex: 1 1 auto !important;
+}
+
+/* When no option is selected (data-value="") or when typing (input-active): hide item so input field shows cleanly */
+.ts-wrapper.single.focus .ts-control .item[data-value=""],
+.ts-wrapper.single.dropdown-active .ts-control .item[data-value=""],
+.ts-wrapper.single.input-active .ts-control .item {
+    display: none !important;
+}
+
+.ts-wrapper .ts-control input::placeholder {
+    color: var(--text-low) !important;
+    opacity: 0.7 !important;
+    font-size: 0.85rem !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+[data-theme="dark"] .ts-wrapper .ts-control input::placeholder {
+    color: var(--text-medium) !important;
+    opacity: 0.5 !important;
+}
+
+[data-theme="light"] .ts-wrapper .ts-control input::placeholder {
+    color: #64748b !important;
+    opacity: 1 !important;
 }
 
 /* Clear Button */
@@ -998,6 +1145,21 @@ select option,
 .notification-icon-alert {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
+}
+
+.notification-icon-chat {
+    background: rgba(14, 165, 233, 0.1);
+    color: #0ea5e9;
+}
+
+.notification-icon-attendance {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.notification-icon-leave {
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
 }
 
 .notification-content {
@@ -1102,7 +1264,6 @@ select option,
 
 .data-grid-top {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border-main);
@@ -1157,13 +1318,14 @@ select option,
     align-items: center;
     gap: var(--space-3);
     flex-wrap: wrap;
+    margin-left: auto;
 }
 
 .data-grid-filter-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 14px;
+    padding: 10px 14px;
     background: var(--bg-input);
     border: 1px solid var(--border-main);
     border-radius: var(--radius-md);
@@ -1237,17 +1399,18 @@ select option,
 .filter-slideover {
     position: fixed;
     top: 70px;
-    right: -400px;
-    width: 360px;
+    right: -100%;
+    width: 100%;
+    max-width: 360px;
     height: calc(100vh - 70px);
     background: var(--bg-surface);
     backdrop-filter: blur(20px);
     border-left: 1px solid var(--border-main);
-    z-index: 1040;
+    z-index: 1045;
     transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
-    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.1);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.2);
 }
 
 .filter-slideover.show {
@@ -1379,7 +1542,141 @@ select option,
 .btn-deselect-all:hover {
     text-decoration: underline;
 }
-body { overflow-x: hidden; }
-.top-bar-premium { flex-wrap: wrap; gap: 16px; }
-@media (max-width: 576px) { .data-grid-search { width: 100%; } .data-grid-search input { width: 100%; } }
 
+/* ─── Global Responsive Layout Refinements ─── */
+@media (max-width: 767.98px) {
+    html, body {
+        overflow-x: clip;
+    }
+}
+
+.glass-card {
+    max-width: 100%;
+    word-break: break-word;
+}
+
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.kanban-wrapper {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    max-width: 100%;
+}
+
+.top-bar-premium {
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+@media (max-width: 991.98px) {
+    .top-bar-premium {
+        padding-left: var(--space-3) !important;
+        padding-right: var(--space-3) !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .top-bar-premium {
+        position: relative !important;
+        top: 0 !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        padding: 14px 16px !important;
+        margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 16px !important;
+    }
+
+    .top-bar-premium > div:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .top-bar-premium .btn-premium {
+        font-size: 0.8rem;
+    }
+
+    .data-grid-top {
+        position: static !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        padding: 12px 16px !important;
+    }
+
+    .data-grid-search {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .data-grid-search input {
+        width: 100% !important;
+    }
+
+    .data-grid-actions {
+        width: 100% !important;
+        margin-left: 0 !important;
+        justify-content: space-between;
+        gap: 8px !important;
+    }
+
+    .data-grid-bulk-actions {
+        position: static !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 12px 16px !important;
+    }
+
+    .data-grid-bulk-left {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .data-grid-search {
+        width: 100%;
+    }
+
+    .data-grid-search input {
+        width: 100%;
+    }
+
+    .kanban-column {
+        width: 290px !important;
+    }
+
+    .modal-dialog {
+        margin: 0.5rem !important;
+        max-width: calc(100vw - 1rem) !important;
+    }
+
+    .modal-content {
+        border-radius: var(--radius-md) !important;
+    }
+
+    .modal-body,
+    .modal-header,
+    .modal-footer {
+        padding: 16px !important;
+    }
+
+    .data-grid-pagination {
+        margin-left: 0;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .badge-premium {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.6rem;
+    }
+}

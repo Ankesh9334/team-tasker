@@ -7,6 +7,17 @@
 
     <title>{{ $title ?? 'Welcome To Team Tasker' }}</title>
 
+    @php
+        $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+        $appLogo = $appSettings['app_logo'] ?? null;
+    @endphp
+
+    @if ($appLogo)
+        <link rel="icon" href="{{ asset('storage/' . $appLogo) }}">
+    @else
+        <link rel="icon" href="{{ asset('favicon.ico') }}">
+    @endif
+
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 

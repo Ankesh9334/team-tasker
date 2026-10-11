@@ -47,6 +47,11 @@ class Task extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function subtasks()
     {
         return $this->hasMany(Task::class, 'parent_id');

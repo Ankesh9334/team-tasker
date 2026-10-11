@@ -53,8 +53,7 @@
                     <label class="heading-label mb-2">IMAP Host</label>
                     <input type="text" name="imap_host"
                         class="form-premium-control @error('imap_host') is-invalid @enderror"
-                        value="{{ old('imap_host', $settings['imap_host'] ?? '') }}" placeholder="imap.gmail.com"
-                        required>
+                        value="{{ old('imap_host', $settings['imap_host'] ?? '') }}" placeholder="imap.gmail.com">
                     @error('imap_host')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
@@ -62,7 +61,7 @@
                 <div class="col-md-3 mb-3">
                     <label class="heading-label mb-2">Port</label>
                     <input type="number" name="imap_port" class="form-premium-control"
-                        value="{{ $settings['imap_port'] ?? '993' }}" placeholder="993" required>
+                        value="{{ $settings['imap_port'] ?? '993' }}" placeholder="993">
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="heading-label mb-2">Encryption</label>
@@ -83,12 +82,12 @@
                 <div class="col-md-6 mb-3">
                     <label class="heading-label mb-2">Username</label>
                     <input type="text" name="imap_user" class="form-premium-control"
-                        value="{{ $settings['imap_user'] ?? '' }}" placeholder="email@example.com" required>
+                        value="{{ $settings['imap_user'] ?? '' }}" placeholder="email@example.com">
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="heading-label mb-2">Password</label>
                     <input type="password" name="imap_password" class="form-premium-control"
-                        value="{{ $settings['imap_password'] ?? '' }}" placeholder="App Password" required>
+                        value="{{ $settings['imap_password'] ?? '' }}" placeholder="App Password">
                 </div>
             </div>
         </div>

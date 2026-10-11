@@ -22,7 +22,7 @@
         <div class="d-flex align-items-center gap-3 mb-4">
             <div class="avatar-premium" style="width: 48px; height: 48px;">
                 @if ($ticket->user && $ticket->user->profile_image)
-                    <img src="{{ asset('storage/' . $ticket->user->profile_image) }}" alt="Avatar">
+                    <img alt="team-tasker" src="{{ asset('storage/' . $ticket->user->profile_image) }}" alt="Avatar">
                 @else
                     {{ substr(Auth::user()->name ?? 'U', 0, 1) }}
                 @endif
@@ -48,7 +48,7 @@
                     <div class="avatar-premium {{ $reply->type == 'internal' ? 'border-primary' : '' }}"
                         style="width: 40px; height: 40px;">
                         @if ($reply->user && $reply->user->profile_image)
-                            <img src="{{ asset('storage/' . $reply->user->profile_image) }}" alt="Avatar">
+                            <img alt="team-tasker" src="{{ asset('storage/' . $reply->user->profile_image) }}" alt="Avatar">
                         @else
                             {{ substr($reply->user ? $reply->user->name : 'S', 0, 1) }}
                         @endif

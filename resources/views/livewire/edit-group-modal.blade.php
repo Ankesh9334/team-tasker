@@ -14,11 +14,21 @@ new class extends Component {
 
     public function with()
     {
+        $selected = is_array($this->selectedUsers) ? $this->selectedUsers : [];
+        if (empty($selected)) {
+            $selected = [-1]; // Prevent empty IN clause
+        }
+        $selectedStr = implode(',', $selected);
+
         return [
             'users' => User::where('id', '!=', Auth::id())
-                ->when($this->searchUser, function ($query) {
-                    $query->where('name', 'like', '%' . $this->searchUser . '%');
+                ->when($this->searchUser, function ($query) use ($selected) {
+                    $query->where(function ($q) use ($selected) {
+                        $q->where('name', 'like', '%' . $this->searchUser . '%')
+                          ->orWhereIn('id', $selected);
+                    });
                 })
+                ->orderByRaw("id IN ($selectedStr) DESC")
                 ->limit(50)
                 ->get()
         ];
@@ -31,12 +41,13 @@ new class extends Component {
         if ($conversation && $conversation->type === 'group') {
             $this->conversationId = $conversation->id;
             $this->name = $conversation->name;
-            // Get all participant IDs except the current user (though current user is a participant)
-            // Ideally we show everyone, but let's exclude Auth user from the selection list to avoid accidental self-removal if logic allows
-            // or just pre-select them.
-            // Let's filter out Auth ID for the select list logic if the list UI excludes Auth user.
-
-            $this->selectedUsers = $conversation->participants->pluck('id')->reject(fn($id) => $id == Auth::id())->toArray();
+            
+            $this->selectedUsers = $conversation->participants
+                ->pluck('id')
+                ->reject(fn($id) => $id == Auth::id())
+                ->map(fn($id) => (string)$id)
+                ->values()
+                ->toArray();
 
             $this->dispatch('open-modal', id: 'editGroupModal');
         }

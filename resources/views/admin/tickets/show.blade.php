@@ -34,12 +34,12 @@
                                 <div class="avatar-premium"
                                     style="width: 48px; height: 48px; border: 2px solid var(--border-main);">
                                     @if ($ticket->user && $ticket->user->profile_image)
-                                        <img src="{{ asset('storage/' . $ticket->user->profile_image) }}"
+                                        <img alt="team-tasker" src="{{ asset('storage/' . $ticket->user->profile_image) }}"
                                             alt="Avatar">
                                     @else
-                                        <div class="d-flex align-items-center justify-content-center w-100 h-100"
+                                        <div class="d-flex align-items-center justify-content-center w-100 h-100 text-white"
                                             style="background: var(--primary); color: white; font-weight: 700;">
-                                            {{ substr($ticket->user ? $ticket->user->name : $ticket->email_source, 0, 1) }}
+                                            {{ substr($ticket->user?->name ?? $ticket->client?->name ?? 'External Contact', 0, 1) }}
                                         </div>
                                     @endif
                                 </div>
@@ -48,14 +48,14 @@
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div>
                                         <h5 class="fw-bold mb-0" style="color: var(--text-high);">
-                                            {{ $ticket->user ? $ticket->user->name : 'External Contact' }}</h5>
+                                            {{ $ticket->user?->name ?? $ticket->client?->name ?? 'External Contact' }}</h5>
                                         <div class="text-low" style="font-size: 0.8rem;">
-                                            &lt;{{ $ticket->user ? $ticket->user->email : $ticket->email_source }}&gt;
+                                            &lt;{{ $ticket->user?->email ?? $ticket->client?->email ?? 'Unknown' }}&gt;
                                         </div>
                                     </div>
                                     <div class="text-end">
                                         <div class="text-low small mb-1">
-                                            {{ $ticket->created_at->format('M d, Y • H:i') }}</div>
+                                            {{ $ticket->created_at->format('M d, Y H:i') }}</div>
                                         <span class="badge-premium py-0 px-2"
                                             style="background: var(--bg-surface); font-size: 0.65rem; color: var(--text-low); border: 1px solid var(--border-subtle);">Original
                                             Ticket</span>
@@ -118,13 +118,13 @@
                                     <div class="col-auto">
                                         <div class="avatar-premium"
                                             style="width: 36px; height: 36px; border: 1px solid var(--border-main);">
-                                            @if ($reply->user && $reply->user->profile_image)
-                                                <img src="{{ asset('storage/' . $reply->user->profile_image) }}"
-                                                    alt="Avatar">
+                                            @php $replyProfileImage = $reply->user?->profile_image ?? $reply->client?->profile_image; @endphp
+                                            @if ($replyProfileImage)
+                                                <img src="{{ asset('storage/' . $replyProfileImage) }}" alt="Avatar">
                                             @else
-                                                <div class="d-flex align-items-center justify-content-center w-100 h-100"
+                                                <div class="d-flex align-items-center justify-content-center w-100 h-100 text-white"
                                                     style="background: var(--bg-input); color: var(--text-high); font-weight: 600; font-size: 0.8rem;">
-                                                    {{ substr($reply->user ? $reply->user->name : $reply->email_source, 0, 1) }}
+                                                    {{ substr($reply->user?->name ?? $reply->client?->name ?? $reply->email_source ?? 'Unknown', 0, 1) }}
                                                 </div>
                                             @endif
                                         </div>
@@ -132,15 +132,16 @@
                                     <div class="col">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
-                                                <div class="fw-bold mb-0"
-                                                    style="color: var(--text-high); font-size: 0.85rem;">
-                                                    {{ $reply->user ? $reply->user->name : 'External Reply' }}</div>
+                                                <div class="fw-bold mb-0" style="color: var(--text-high); font-size: 0.85rem;">
+                                                    {{ $reply->user?->name ?? $reply->client?->name ?? 'External Reply' }}
+                                                </div>
                                                 <div class="text-low" style="font-size: 0.75rem;">
-                                                    &lt;{{ $reply->email_source }}&gt;</div>
+                                                    &lt;{{ $reply->email_source }}&gt;
+                                                </div>
                                             </div>
                                             <div class="text-end">
                                                 <div class="text-low" style="font-size: 0.7rem;">
-                                                    {{ $reply->created_at->format('M d, Y • H:i') }}</div>
+                                                    {{ $reply->created_at->format('M d, Y â€¢ H:i') }}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -156,26 +157,26 @@
                             <div class="d-flex align-items-center gap-3">
                                 <div class="avatar-premium"
                                     style="width: 44px; height: 44px; border: 2px solid {{ $reply->type == 'internal' ? 'var(--primary)' : 'var(--border-main)' }};">
-                                    @if ($reply->user && $reply->user->profile_image)
-                                        <img src="{{ asset('storage/' . $reply->user->profile_image) }}"
-                                            alt="Avatar">
+                                    @php $replyProfileImage = $reply->user?->profile_image ?? $reply->client?->profile_image; @endphp
+                                    @if ($replyProfileImage)
+                                        <img src="{{ asset('storage/' . $replyProfileImage) }}" alt="Avatar">
                                     @else
-                                        <div class="d-flex align-items-center justify-content-center w-100 h-100"
+                                        <div class="d-flex align-items-center justify-content-center w-100 h-100 text-white"
                                             style="background: var(--bg-input); color: var(--text-high); font-weight: 600;">
-                                            {{ substr($reply->user ? $reply->user->name : 'C', 0, 1) }}
+                                            {{ substr($reply->user?->name ?? $reply->client?->name ?? 'System', 0, 1) }}
                                         </div>
                                     @endif
                                 </div>
                                 <div>
                                     <div class="fw-bold" style="color: var(--text-high); font-size: 0.95rem;">
-                                        {{ $reply->user ? $reply->user->name : 'Client Contact' }}
+                                        {{ $reply->user?->name ?? $reply->client?->name ?? 'System' }}
                                         @if ($reply->type == 'internal')
                                             <span class="badge-premium py-0 px-2 ms-2"
                                                 style="font-size: 0.6rem; background: rgba(var(--primary-rgb), 0.1); color: var(--primary);">Agent</span>
                                         @endif
                                     </div>
                                     <div style="font-size: 0.7rem; color: var(--text-low);">
-                                        {{ $reply->created_at->format('M d, Y • H:i') }}
+                                        {{ $reply->created_at->format('M d, Y â€¢ H:i') }}
                                     </div>
                                 </div>
                             </div>
@@ -284,7 +285,7 @@
                     <div class="p-2 rounded"
                         style="background: var(--bg-input); border: 1px solid var(--border-subtle);">
                         <div class="small fw-medium text-truncate" style="color: var(--text-high);">
-                            {{ $ticket->user ? $ticket->user->email : $ticket->email_source }}
+                            {{ $ticket->user?->email ?? $ticket->client?->email ?? 'Unknown' }}
                         </div>
                     </div>
                 </div>
@@ -330,6 +331,15 @@
 
                             <form action="{{ route('admin.tickets.convert_to_task', $ticket->id) }}" method="POST">
                                 @csrf
+                                <div class="mb-4">
+                                    <label class="heading-label mb-2" style="font-size: 0.8rem;">Target Project (Optional)</label>
+                                    <x-select name="project_id" style="background: var(--bg-input);">
+                                        <option value="" class="bg-dark">-- No Project (Standalone Task) --</option>
+                                        @foreach($projects as $project)
+                                            <option value="{{ $project->id }}" class="bg-dark">{{ $project->name }}</option>
+                                        @endforeach
+                                    </x-select>
+                                </div>
                                 <div class="d-grid gap-2">
                                     <button type="submit" class="btn-premium btn-premium-primary py-3 fw-bold">
                                         <i class="fas fa-check-circle me-2"></i> Confirm Promotion

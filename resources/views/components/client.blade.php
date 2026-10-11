@@ -1,10 +1,43 @@
+@props(['title' => 'Client Dashboard | Team Tasker', 'fullscreen' => false, 'hideSidebar' => false, 'noPadding' => false])
+@php
+    $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+    $appLogo = $appSettings['app_logo'] ?? null;
+    $currentTheme = request()->cookie('theme', 'dark');
+    if (!in_array($currentTheme, ['dark', 'light'])) {
+        $currentTheme = 'dark';
+    }
+@endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="{{ $currentTheme }}" data-bs-theme="{{ $currentTheme }}" style="background-color: {{ $currentTheme === 'light' ? '#f1f5f9' : '#0f172a' }}; color-scheme: {{ $currentTheme }};">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title ?? 'Admin Dashboard | Team Tasker' }}</title>
+
+    <!-- Synchronous Anti-FOUC Theme Pre-initializer: Runs before any CSS or DOM rendering -->
+    <script>
+        (function() {
+            try {
+                var stored = localStorage.getItem('theme');
+                var theme = stored || document.documentElement.getAttribute('data-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                document.documentElement.style.backgroundColor = (theme === 'light' ? '#f1f5f9' : '#0f172a');
+                document.documentElement.style.colorScheme = theme;
+                if (stored && document.cookie.indexOf('theme=' + stored) === -1) {
+                    document.cookie = 'theme=' + stored + ';path=/;max-age=31536000;SameSite=Lax';
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+    @if ($appLogo)
+        <link rel="icon" href="{{ asset('storage/' . $appLogo) }}">
+    @else
+        <link rel="icon" href="{{ asset('favicon.ico') }}">
+    @endif
+
     @livewireStyles
 
     <!-- Firebase SDK (Compat) -->
@@ -93,6 +126,7 @@
                     menubar: false,
                     statusbar: false,
                     resize: false,
+                    toolbar_mode: 'sliding',
                     toolbar: 'undo redo | bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | forecolor backcolor | table | bullist numlist',
                     extended_valid_elements: 'i[class|style],table[class|style],th[class|style],td[class|style],h1[class|style],h2[class|style],h3[class|style],h4[class|style],h5[class|style],h6[class|style]',
                     valid_elements: '*[*]',
@@ -101,12 +135,12 @@
                     valid_children: '+body[style|i]',
                     content_style: `
                         body { 
-                            background: transparent !important; 
+                            background: ${isDark ? '#0f172a' : '#ffffff'} !important; 
                             color: ${isDark ? '#f8fafc' : '#0f172a'}; 
                             font-family: 'Outfit', sans-serif; 
                             font-size: 14px; 
                             margin: 0; 
-                            padding: 10px; 
+                            padding: 10px 0px; 
                             line-height: 1.5; 
                         } 
                         p { margin: 0; } 
@@ -147,7 +181,7 @@
                                 }
                             }
                         });
-                        editor.on('init', function() {
+                        editor.on('init', function () {
                             const container = editor.getContainer();
                             if (container) {
                                 container.style.border = 'none';
@@ -202,8 +236,8 @@
                 entity_encoding: 'raw',
                 remove_trailing_brs: false,
                 valid_children: '+body[style|i]',
-                setup: function(editor) {
-                    editor.on('init', function() {
+                setup: function (editor) {
+                    editor.on('init', function () {
                         const container = editor.getContainer();
                         if (container) {
                             container.style.border = isDark ? '1px solid rgba(99, 102, 241, 0.3)' :
@@ -227,6 +261,52 @@
             const newTheme = e.detail && e.detail.theme ? e.detail.theme : localStorage.getItem('theme');
             window.initGlobalEditors(newTheme);
         });
+
+        // ── Rich Editor Form Submit Fix ──────────────────────────────────────────
+        // TinyMCE hides the original <textarea>, so `required` blocks submission.
+        // Before any form submits, we: 1) sync all TinyMCE instances to their
+        // underlying textarea, 2) check data-required fields are non-empty.
+        document.addEventListener('submit', function (e) {
+            if (typeof tinymce === 'undefined') return;
+
+            const form = e.target;
+
+            // 1. Sync every TinyMCE editor that lives inside this form
+            tinymce.editors.forEach(function (editor) {
+                const el = document.getElementById(editor.id);
+                if (el && form.contains(el)) {
+                    editor.save(); // copies editor content into the textarea
+                }
+            });
+
+            // 2. Validate data-required textareas (the ones we stripped `required` from)
+            const requiredEditors = form.querySelectorAll('textarea[data-required="true"]');
+            for (let ta of requiredEditors) {
+                const val = (ta.value || '').replace(/<[^>]*>/g, '').trim(); // strip HTML tags
+                if (!val) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Highlight the TinyMCE container visually
+                    const editorContainer = ta.nextElementSibling;
+                    if (editorContainer && editorContainer.classList.contains('tox-tinymce')) {
+                        editorContainer.style.border = '1px solid #ef4444';
+                        editorContainer.style.borderRadius = '8px';
+                        setTimeout(() => {
+                            editorContainer.style.border = '';
+                            editorContainer.style.borderRadius = '';
+                        }, 3000);
+                    }
+                    // Show a SweetAlert if available, else a plain alert
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'warning', title: 'Required Field', text: 'Please fill in the description field.', confirmButtonColor: '#6366f1' });
+                    } else {
+                        alert('Please fill in the description field.');
+                    }
+                    return false;
+                }
+            }
+        }, true); // `true` = capture phase, fires before native validation
+
 
         // Global Chat Messages Component
         window.chatMessages = (wire, props) => ({
@@ -328,7 +408,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 24px;
+            padding: 0 16px;
             z-index: 1050;
             backdrop-filter: blur(10px);
         }
@@ -337,7 +417,7 @@
             top: 70px !important;
             height: calc(100vh - 70px) !important;
             border-top: none !important;
-            z-index: 1040;
+            z-index: 1045;
             overflow-y: auto;
             scrollbar-width: thin;
             scrollbar-color: var(--border-subtle) transparent;
@@ -362,10 +442,53 @@
             /* Sidebar width */
         }
 
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 1040;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--transition-base);
+        }
+
+        .sidebar-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* TinyMCE Dark Mode Overrides */
+        [data-theme="dark"] .tox-tinymce {
+            border: 1px solid var(--border-main) !important;
+        }
+
+        [data-theme="dark"] .tox .tox-toolbar,
+        [data-theme="dark"] .tox .tox-toolbar__overflow,
+        [data-theme="dark"] .tox .tox-toolbar__primary {
+            background: var(--bg-surface) !important;
+        }
+
+        [data-theme="dark"] .tox .tox-tbtn {
+            color: var(--text-high) !important;
+        }
+
+        [data-theme="dark"] .tox .tox-tbtn:hover {
+            background: var(--bg-input) !important;
+        }
+
+        [data-theme="dark"] .tox .tox-tbtn--enabled,
+        [data-theme="dark"] .tox .tox-tbtn--enabled:hover {
+            background: rgba(var(--primary-rgb), 0.2) !important;
+        }
+
         .header-utils {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
         }
 
         .header-icon-btn {
@@ -380,6 +503,7 @@
             border: 1px solid var(--border-subtle);
             cursor: pointer;
             transition: all 0.2s ease;
+            flex-shrink: 0;
         }
 
         .header-icon-btn:hover {
@@ -423,135 +547,219 @@
             box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
         }
 
-        @media (max-width: 768px) {
-            .header-search-premium {
-                display: none;
+        @media (max-width: 991.98px) {
+            .sidebar-premium {
+                transform: translateX(-100%);
+                transition: transform var(--transition-base);
+                z-index: 1045 !important;
             }
-        }
 
-        @media (max-width: 991px) {
+            .sidebar-premium.mobile-open {
+                transform: translateX(0) !important;
+                box-shadow: 20px 0 50px rgba(0, 0, 0, 0.5);
+            }
+
             .main-content-premium {
                 margin-left: 0 !important;
-                padding-top: 80px !important;
+                padding-top: var(--space-2) !important;
             }
 
             .layout-header-premium {
                 left: 0 !important;
             }
         }
+
+        @media (max-width: 768px) {
+            .header-search-premium {
+                display: none;
+            }
+
+            .main-content-premium {
+                padding-top: var(--space-2) !important;
+                margin-left: 0 !important;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .layout-header-premium {
+                padding: 0 10px !important;
+            }
+
+            .header-utils {
+                gap: 8px !important;
+            }
+
+            .header-icon-btn {
+                width: 34px !important;
+                height: 34px !important;
+                min-width: 34px !important;
+                border-radius: 8px !important;
+            }
+
+            .mobile-toggle-premium {
+                width: 36px !important;
+                height: 36px !important;
+                margin-right: 4px !important;
+            }
+
+            .avatar-premium {
+                width: 34px !important;
+                height: 34px !important;
+                font-size: 0.8rem !important;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .header-utils {
+                gap: 5px !important;
+            }
+
+            .sidebar-brand-text {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 
 <body>
+    @php
+        $notificationCount = Auth::guard('client')->check() ? Auth::guard('client')->user()->unreadNotifications->count() : 0;
+    @endphp
 
-    <header class="layout-header-premium">
-        @php
-            $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
-            $appName = $appSettings['app_name'] ?? 'TeamTasker';
-            $appLogo = $appSettings['app_logo'] ?? null;
-        @endphp
-        <div class="d-flex align-items-center gap-3">
-            <button class="mobile-toggle-premium d-lg-none" id="mobileSidebarToggle" style="margin-right: 0;">
-                <i class="fas fa-bars"></i>
-            </button>
-            <a href="{{ route('client.dashboard') }}"
-                class="sidebar-brand text-decoration-none p-0 border-0 bg-transparent">
-                @if ($appLogo)
-                    <img src="{{ asset('storage/' . $appLogo) }}" alt="Logo"
-                        style="width: 32px; height: 32px; object-fit: contain; border-radius: 6px;">
-                @else
-                    <i class="fas fa-layer-group text-primary" style="font-size: 1.5rem;"></i>
-                @endif
-                <span class="text-high fw-bold"
-                    style="font-size: 1.25rem; letter-spacing: -0.5px;">{{ $appName }}</span>
-            </a>
-        </div>
-
-        <!-- Global Search -->
-        <form action="{{ route('search.global') }}" method="GET" class="header-search-premium">
-            <i class="fas fa-search"></i>
-            <input type="text" name="q" placeholder="Search tickets, tasks..." value="{{ request('q') }}">
-        </form>
-
-        <div class="header-utils">
-            <!-- Theme Toggle -->
-            <button class="header-icon-btn" id="themeToggle" title="Toggle Theme">
-                <i class="fas fa-moon"></i>
-            </button>
-
-            <!-- Notification Placeholder -->
+    @if(!$fullscreen)
+        <header class="layout-header-premium">
             @php
-                $notificationCount = Auth::user()->unreadNotifications->count();
+                $appSettings = \App\Models\Setting::whereIn('key', ['app_name', 'app_logo'])->pluck('value', 'key');
+                $appName = $appSettings['app_name'] ?? 'TeamTasker';
+                $appLogo = $appSettings['app_logo'] ?? null;
             @endphp
-            <button class="header-icon-btn position-relative" title="Notifications" data-bs-toggle="modal"
-                data-bs-target="#notificationsModal">
-                <i class="far fa-bell"></i>
-                @if ($notificationCount > 0)
-                    <span class="notification-badge">{{ $notificationCount > 99 ? '99+' : $notificationCount }}</span>
-                @endif
-            </button>
-
-            <!-- User Profile -->
-            <div class="dropdown">
-                <div class="user-profile-premium dropdown-toggle p-0 bg-transparent border-0" data-bs-toggle="dropdown"
-                    style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
-                    <div class="avatar-premium"
-                        style="width: 38px; height: 38px; border: 1px solid var(--border-main);">
-                        @if (Auth::user()->profile_image)
-                            <img src="{{ asset('storage/' . Auth::user()->profile_image) }}" alt="Profile">
-                        @else
-                            {{ substr(Auth::user()->name ?? 'U', 0, 1) }}
-                        @endif
-                    </div>
-                </div>
-                <ul class="dropdown-menu dropdown-menu-end shadow-premium mt-3"
-                    style="min-width: 200px; border-radius: 12px; border: 1px solid var(--border-subtle);">
-                    <li class="px-3 py-3"
-                        style="border-bottom: 1px solid var(--border-subtle); background: var(--bg-input); border-radius: 12px 12px 0 0;">
-                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-high);">
-                            {{ Auth::user()->name }}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-low);">{{ Auth::user()->email }}</div>
-                    </li>
-                    <li><a class="dropdown-item py-2 mt-1" href="#" data-bs-toggle="modal"
-                            data-bs-target="#profileModal"><i class="fas fa-user-edit me-2 text-primary"></i> Edit
-                            Profile</a></li>
-                    <li>
-                        <hr class="dropdown-divider" style="opacity: 0.1;">
-                    </li>
-                    <li><a class="dropdown-item text-danger py-2 mb-1" href="{{ route('logout') }}"><i
-                                class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
-                </ul>
+            <div class="d-flex align-items-center gap-2">
+                <button class="mobile-toggle-premium d-lg-none" id="mobileSidebarToggle" style="margin-right: 0;">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a href="{{ route('client.dashboard') }}"
+                    class="sidebar-brand text-decoration-none p-0 border-0 bg-transparent">
+                    @if ($appLogo)
+                        <img src="{{ asset('storage/' . $appLogo) }}" alt="Logo"
+                            style="width: 32px; height: 32px; object-fit: contain; border-radius: 6px;">
+                    @else
+                        <i class="fas fa-layer-group text-primary" style="font-size: 1.5rem;"></i>
+                    @endif
+                    <span class="text-high fw-bold sidebar-brand-text"
+                        style="font-size: 1.25rem; letter-spacing: -0.5px;">{{ $appName }}</span>
+                </a>
             </div>
-        </div>
-    </header>
 
-    <aside class="sidebar-premium">
+            <!-- Global Search -->
+            @if (!request()->routeIs('client.chat.index'))
+                <form action="{{ route('search.global') }}" method="GET" class="header-search-premium">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="q" placeholder="Search tickets, tasks..." value="{{ request('q') }}">
+                </form>
+            @endif
 
-        <nav>
-            @if (Auth::user()->hasPermission('tickets.view'))
+            <div class="header-utils">
+                <!-- Theme Toggle -->
+                <button class="header-icon-btn" id="themeToggle" title="Toggle Theme">
+                    <i class="fas {{ $currentTheme === 'dark' ? 'fa-moon' : 'fa-sun' }}"></i>
+                </button>
+
+                <!-- Notification Placeholder -->
+                <button class="header-icon-btn position-relative" title="Notifications" data-bs-toggle="modal"
+                    data-bs-target="#notificationsModal">
+                    <i class="far fa-bell"></i>
+                    @if ($notificationCount > 0)
+                        <span class="notification-badge">{{ $notificationCount > 99 ? '99+' : $notificationCount }}</span>
+                    @endif
+                </button>
+
+                <!-- User Profile -->
+                <div class="dropdown" x-data="{
+                        myStatus: localStorage.getItem('user_presence_status_' + {{ Auth::guard('client')->id() }}) || 'online',
+                        getStatusColor() {
+                            if (this.myStatus === 'away') return '#f59e0b';
+                            if (this.myStatus === 'busy') return '#ea4335';
+                            if (this.myStatus === 'offline') return '#6b7280';
+                            return '#00a884';
+                        },
+                        init() {
+                            const updateStatus = (st) => {
+                                this.myStatus = st;
+                            };
+                            window.addEventListener('user-status-changed-event', (e) => {
+                                if (e.detail && Number(e.detail.userId) === Number({{ Auth::guard('client')->id() }})) {
+                                    updateStatus(e.detail.status);
+                                }
+                            });
+                            window.addEventListener('all-user-statuses-updated', (e) => {
+                                const saved = localStorage.getItem('user_presence_status_' + {{ Auth::guard('client')->id() }});
+                                if (saved) updateStatus(saved);
+                            });
+                        }
+                    }">
+                    <div class="user-profile-premium p-0 bg-transparent border-0 pe-1" data-bs-toggle="dropdown"
+                        style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <div class="avatar-premium position-relative"
+                            style="width: 38px; height: 38px; border: 1px solid var(--border-main);">
+                            @if (Auth::guard('client')->user()->profile_image)
+                                <img alt="team-tasker"
+                                    src="{{ asset('storage/' . Auth::guard('client')->user()->profile_image) }}" alt="Profile">
+                            @else
+                                {{ substr(Auth::guard('client')->user()->name ?? 'U', 0, 1) }}
+                            @endif
+                        </div>
+                    </div>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-premium mt-3"
+                        style="min-width: 200px; border-radius: 12px; border: 1px solid var(--border-subtle);">
+                        <li class="px-3 py-3"
+                            style="border-bottom: 1px solid var(--border-subtle); background: var(--bg-input); border-radius: 12px 12px 0 0;">
+                            <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-high);">
+                                {{ Auth::guard('client')->user()->name }}
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-low);">
+                                {{ Auth::guard('client')->user()->email }}
+                            </div>
+                        </li>
+                        <li><a class="dropdown-item py-2 mt-1" href="#" data-bs-toggle="modal"
+                                data-bs-target="#profileModal"><i class="fas fa-user-edit me-2 text-primary"></i> Edit
+                                Profile</a></li>
+                        <li>
+                            <hr class="dropdown-divider" style="opacity: 0.1;">
+                        </li>
+                        <li><a class="dropdown-item text-danger py-2 mb-1" href="{{ route('logout') }}"><i
+                                    class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </header>
+    @endif
+
+    @if(!$fullscreen)
+        <aside class="sidebar-premium {{ $hideSidebar ? 'd-lg-none' : '' }}">
+
+            <nav>
                 <a href="{{ route('client.dashboard') }}"
                     class="nav-link-premium {{ request()->routeIs('client.dashboard') ? 'active' : '' }}">
-                    <i class="fas fa-ticket-alt"></i> My Tickets
-                </a>
-            @endif
+                    <i class="fas fa-home"></i> Dashboard
+                    <a href="{{ route('client.dashboard') }}#tickets"
+                        class="nav-link-premium {{ request()->routeIs('client.tickets.*') ? 'active' : '' }}">
+                        <i class="fas fa-ticket-alt"></i> Tickets
+                    </a>
+                    <a href="{{ route('client.dashboard') }}#tasks"
+                        class="nav-link-premium {{ request()->routeIs('client.tasks.*') ? 'active' : '' }}">
+                        <i class="fas fa-tasks"></i> Tasks
+                    </a>
+                    <a href="{{ route('client.chat.index') }}"
+                        class="nav-link-premium d-flex align-items-center {{ request()->routeIs('client.chat.index') ? 'active' : '' }}">
+                        <i class="fas fa-comments"></i> Chats
+                        <livewire:global-chat-badge />
+                    </a>
+            </nav>
+        </aside>
+    @endif
 
-            @if (Auth::user()->hasPermission('tickets.create'))
-                <a href="{{ route('client.tickets.create') }}"
-                    class="nav-link-premium {{ request()->routeIs('client.tickets.create') ? 'active' : '' }}">
-                    <i class="fas fa-plus-circle"></i> New Ticket
-                </a>
-            @endif
-
-            @if (Auth::user()->hasPermission('chat.view'))
-                <a href="{{ route('client.chat.index') }}"
-                    class="nav-link-premium {{ request()->routeIs('client.chat.index') ? 'active' : '' }}">
-                    <i class="fas fa-comments"></i> Chat
-                </a>
-            @endif
-        </nav>
-    </aside>
-
-    <main class="main-content-premium">
+    <main class="main-content-premium"
+        style="{{ $fullscreen ? 'margin: 0 !important; padding: 0 !important; max-width: 100% !important;' : ($hideSidebar ? 'margin-left: 0 !important; max-width: 100% !important;' : '') }} {{ $noPadding ? 'padding: 0 !important;' : '' }}">
         {{ $slot }}
     </main>
 
@@ -569,32 +777,29 @@
                     <div class="px-4 py-2 d-flex justify-content-between align-items-center">
                         <span class="text-low small">{{ $notificationCount }} Unread</span>
                         @if ($notificationCount > 0)
-                            <form action="{{ route('notifications.markAsRead') }}" method="POST">
+                            <form action="{{ route('client.notifications.markAsRead') }}" method="POST">
                                 @csrf
-                                <button type="submit"
-                                    class="btn btn-link text-primary text-decoration-none p-0 small"
+                                <button type="submit" class="btn btn-link text-primary text-decoration-none p-0 small"
                                     style="font-size: 0.75rem;">Mark all as read</button>
                             </form>
                         @endif
                     </div>
                     <div class="notification-list-wrapper" style="max-height: 400px; overflow-y: auto;">
-                        @forelse (Auth::user()->notifications()->latest()->take(20)->get() as $notification)
+                        @forelse (Auth::guard('client')->user()->notifications()->latest()->take(20)->get() as $notification)
                             @php
                                 $type = 'task';
                                 $icon = 'fa-tasks';
-                                if (str_contains($notification->type, 'Ticket')) {
+                                $url = route('client.notifications.readAndRedirect', $notification->id);
+
+                                if (!empty($notification->data['conversation_id']) || str_contains($notification->type, 'Chat')) {
+                                    $type = 'chat';
+                                    $icon = 'fa-comment-dots';
+                                } elseif (!empty($notification->data['ticket_id']) || str_contains($notification->type, 'Ticket')) {
                                     $type = 'ticket';
                                     $icon = 'fa-ticket-alt';
                                 } elseif (str_contains($notification->type, 'Sla')) {
                                     $type = 'alert';
                                     $icon = 'fa-exclamation-triangle';
-                                }
-
-                                $url = '#';
-                                if (isset($notification->data['ticket_id'])) {
-                                    $url = route('client.tickets.show', $notification->data['ticket_id']);
-                                } elseif (isset($notification->data['task_id'])) {
-                                    $url = route('client.tasks.show', $notification->data['task_id']);
                                 }
                             @endphp
                             <a href="{{ $url }}"
@@ -634,15 +839,15 @@
 
     <!-- Profile Edit Modal -->
     <x-modal id="profileModal" title="Edit Profile" submitText="Save Changes"
-        formAction="{{ route('profile.update') }}" enctype="multipart/form-data">
+        formAction="{{ route('client.profile.update') }}" enctype="multipart/form-data">
         <div class="text-center mb-4">
             <div class="avatar-premium mx-auto mb-3"
                 style="width: 72px; height: 72px; font-size: 1.75rem; border: 3px solid var(--border-main);">
-                @if (Auth::user()->profile_image)
-                    <img src="{{ asset('storage/' . Auth::user()->profile_image) }}" alt="Profile"
-                        style="width: 100%; height: 100%; object-fit: cover;">
+                @if (Auth::guard('client')->user()->profile_image)
+                    <img alt="team-tasker" src="{{ asset('storage/' . Auth::guard('client')->user()->profile_image) }}"
+                        alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
                 @else
-                    {{ substr(Auth::user()->name ?? 'U', 0, 1) }}
+                    {{ substr(Auth::guard('client')->user()->name ?? 'U', 0, 1) }}
                 @endif
             </div>
             <div class="text-low small mb-2">Update your profile picture</div>
@@ -650,26 +855,27 @@
         </div>
         <div class="mb-3">
             <label class="heading-label mb-2" style="font-size: 0.7rem;">Full Name</label>
-            <input type="text" name="name" value="{{ Auth::user()->name }}" class="form-premium-control"
-                required>
+            <input type="text" name="name" value="{{ Auth::guard('client')->user()->name }}"
+                class="form-premium-control" required>
         </div>
         <div class="mb-3">
             <label class="heading-label mb-2" style="font-size: 0.7rem;">Email Address</label>
-            <input type="email" name="email" value="{{ Auth::user()->email }}" class="form-premium-control"
-                required>
+            <input type="email" name="email" value="{{ Auth::guard('client')->user()->email }}"
+                class="form-premium-control" required>
         </div>
         <div class="mb-3">
             <label class="heading-label mb-2" style="font-size: 0.7rem;">New Password <span class="text-low"
                     style="font-weight: 400;">(leave blank to keep current)</span></label>
-            <input type="password" name="password" class="form-premium-control" placeholder="••••••••">
+            <input type="password" name="password" class="form-premium-control"
+                placeholder="ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢">
         </div>
     </x-modal>
 
     <!-- Toast Container -->
     <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;">
         @if (session('success'))
-            <div id="successToast" class="toast align-items-center text-white bg-success border-0 shadow-lg"
-                role="alert" aria-live="assertive" aria-atomic="true">
+            <div id="successToast" class="toast align-items-center text-white bg-success border-0 shadow-lg" role="alert"
+                aria-live="assertive" aria-atomic="true">
                 <div class="d-flex">
                     <div class="toast-body">
                         <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
@@ -681,8 +887,8 @@
         @endif
 
         @if (session('error'))
-            <div id="errorToast" class="toast align-items-center text-white bg-danger border-0 shadow-lg"
-                role="alert" aria-live="assertive" aria-atomic="true">
+            <div id="errorToast" class="toast align-items-center text-white bg-danger border-0 shadow-lg" role="alert"
+                aria-live="assertive" aria-atomic="true">
                 <div class="d-flex">
                     <div class="toast-body">
                         <i class="fas fa-exclamation-triangle me-2"></i> {{ session('error') }}
@@ -697,34 +903,49 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Theme Toggle Logic
             const themeToggle = document.getElementById('themeToggle');
-            const icon = themeToggle.querySelector('i');
+            const icon = themeToggle ? themeToggle.querySelector('i') : null;
             const html = document.documentElement;
 
-            // Check saved theme or default to dark
-            const savedTheme = localStorage.getItem('theme') || 'dark';
+            // Sync saved theme or default
+            const savedTheme = localStorage.getItem('theme') || html.getAttribute('data-theme') || 'dark';
             html.setAttribute('data-theme', savedTheme);
+            html.setAttribute('data-bs-theme', savedTheme);
+            html.style.backgroundColor = savedTheme === 'light' ? '#f1f5f9' : '#0f172a';
+            html.style.colorScheme = savedTheme;
             updateIcon(savedTheme);
 
-            themeToggle.addEventListener('click', () => {
-                const currentTheme = html.getAttribute('data-theme');
-                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => {
+                    const currentTheme = html.getAttribute('data-theme') || 'dark';
+                    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-                html.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-                updateIcon(newTheme);
+                    html.classList.add('theme-toggling');
+                    html.setAttribute('data-theme', newTheme);
+                    html.setAttribute('data-bs-theme', newTheme);
+                    html.style.backgroundColor = newTheme === 'light' ? '#f1f5f9' : '#0f172a';
+                    html.style.colorScheme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    document.cookie = 'theme=' + newTheme + ';path=/;max-age=31536000;SameSite=Lax';
+                    updateIcon(newTheme);
 
-                // Dispatch event for components like TinyMCE to react
-                window.dispatchEvent(new CustomEvent('theme-changed', {
-                    detail: {
-                        theme: newTheme
-                    }
-                }));
-            });
+                    setTimeout(() => {
+                        html.classList.remove('theme-toggling');
+                    }, 300);
+
+                    // Dispatch event for components like TinyMCE to react
+                    window.dispatchEvent(new CustomEvent('theme-changed', {
+                        detail: {
+                            theme: newTheme
+                        }
+                    }));
+                });
+            }
 
             function updateIcon(theme) {
+                if (!icon) return;
                 if (theme === 'dark') {
                     icon.classList.remove('fa-sun');
                     icon.classList.add('fa-moon');
@@ -735,13 +956,56 @@
             }
 
             // Request Notification Permission on user interaction
-            document.addEventListener('click', function() {
+            document.addEventListener('click', function () {
                 if (Notification.permission === 'default') {
                     Notification.requestPermission();
                 }
             }, {
                 once: true
             });
+
+            // Sidebar Mobile Toggle & Icon Switcher
+            const sidebar = document.querySelector('.sidebar-premium');
+            const mobileToggle = document.getElementById('mobileSidebarToggle');
+            const overlay = document.getElementById('sidebarOverlay');
+
+            function updateToggleIcon(isOpen) {
+                const toggles = document.querySelectorAll('#mobileSidebarToggle, #chatMobileSidebarToggle');
+                toggles.forEach(btn => {
+                    const icon = btn.querySelector('i');
+                    if (icon) {
+                        if (isOpen) {
+                            icon.classList.remove('fa-bars');
+                            icon.classList.add('fa-times');
+                        } else {
+                            icon.classList.remove('fa-times');
+                            icon.classList.add('fa-bars');
+                        }
+                    }
+                });
+            }
+
+            if (mobileToggle) {
+                mobileToggle.addEventListener('click', function () {
+                    const isOpen = sidebar.classList.toggle('mobile-open');
+                    if (isOpen) {
+                        if (overlay) overlay.classList.add('show');
+                    } else {
+                        if (overlay) overlay.classList.remove('show');
+                    }
+                    updateToggleIcon(isOpen);
+                });
+            }
+
+            if (overlay) {
+                overlay.addEventListener('click', function () {
+                    if (sidebar) sidebar.classList.remove('mobile-open');
+                    overlay.classList.remove('show');
+                    updateToggleIcon(false);
+                });
+            }
+
+            window.updateSidebarToggleIcons = updateToggleIcon;
 
             // Socket.IO Connection
             if (typeof io !== 'undefined' && {{ env('ENABLE_WEBSOCKETS', false) ? 'true' : 'false' }}) {
@@ -801,7 +1065,7 @@
                             } else {
                                 console.warn(
                                     'No registration token available. Request permission to generate one.'
-                                    );
+                                );
                             }
                         }).catch((err) => {
                             console.error('An error occurred while retrieving token. ', err);
@@ -814,15 +1078,16 @@
 
             function sendTokenToServer(token) {
                 fetch("{{ route('update.fcm_token') }}", {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': "{{ csrf_token() }}"
-                        },
-                        body: JSON.stringify({
-                            token: token
-                        })
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': "{{ csrf_token() }}"
+                    },
+                    body: JSON.stringify({
+                        token: token
                     })
+                })
                     .then(response => response.json())
                     .then(data => console.log('FCM Token sync:', data))
                     .catch(err => console.error('Error syncing FCM token:', err));
@@ -841,13 +1106,43 @@
             }
 
             messaging.onMessage((payload) => {
-                const notificationTitle = payload.notification.title;
+                console.log('Message received. ', payload);
+
+                const incomingConversationId = payload.data?.conversation_id;
+                const activeConversationInput = document.getElementById('active-conversation-id');
+                const activeConversationId = activeConversationInput ? activeConversationInput.value : null;
+
+                if (document.visibilityState === 'visible' && incomingConversationId && String(activeConversationId) === String(incomingConversationId)) {
+                    return;
+                }
+
+                const msgId = payload.messageId || new Date().getTime();
+                const storageKey = 'fcm_msg_' + msgId;
+                if (localStorage.getItem(storageKey)) {
+                    return;
+                }
+                localStorage.setItem(storageKey, '1');
+                setTimeout(() => localStorage.removeItem(storageKey), 10000);
+
+                const notificationTitle = payload.notification ? payload.notification.title : (payload.data?.title || 'New Notification');
                 const notificationOptions = {
-                    body: payload.notification.body,
+                    body: payload.notification ? payload.notification.body : (payload.data?.body || ''),
                     icon: '/images/logo.png',
+                    data: payload.data || {}
                 };
 
-                new Notification(notificationTitle, notificationOptions);
+                const notif = new Notification(notificationTitle, notificationOptions);
+                notif.onclick = function(event) {
+                    event.preventDefault();
+                    window.focus();
+                    if (incomingConversationId) {
+                        window.location.href = "{{ route('client.chat.index') }}?conversation_id=" + incomingConversationId;
+                    } else if (payload.data?.task_id) {
+                        window.location.href = "/client/tasks/" + payload.data.task_id;
+                    } else if (payload.data?.ticket_id) {
+                        window.location.href = "/client/tickets/" + payload.data.ticket_id;
+                    }
+                };
 
                 if (window.Livewire) {
                     window.Livewire.dispatch('notification-received');

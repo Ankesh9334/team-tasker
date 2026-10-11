@@ -19,7 +19,7 @@ class SuperAdminSeeder extends Seeder
 
         $adminRole = Role::where('slug', 'super-admin')->first();
 
-        // Create Super Admin User
+        // Create Super Admin User (for web guard/backward compatibility)
         User::updateOrCreate(
             ['email' => 'admin@teamtasker.com'],
             [
@@ -28,6 +28,15 @@ class SuperAdminSeeder extends Seeder
                 'role_id' => $adminRole->id,
                 'is_approved' => true,
                 'email_verified_at' => now(),
+            ]
+        );
+
+        // Create Master Admin (for admin guard)
+        \App\Models\Admin::updateOrCreate(
+            ['email' => 'admin@teamtasker.com'],
+            [
+                'name' => 'System Control Admin',
+                'password' => Hash::make('admin123'),
             ]
         );
     }

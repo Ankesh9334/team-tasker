@@ -83,7 +83,7 @@
                 <div class="col-lg-4">
                     <div class="p-4" style="background: rgba(var(--primary-rgb), 0.02); border: 1px solid var(--border-main); border-radius: var(--radius-md);">
                         <div class="mb-4">
-                            <label for="assigned_to" class="heading-label d-block mb-2 text-high">Lead Assignee</label>
+                            <label for="assigned_to" class="heading-label d-block mb-2 text-high">Assigned To</label>
                             <x-select id="assigned_to" name="assigned_to" placeholder="Unassigned">
                                 @foreach ($users as $user)
                                     <option value="{{ $user->id }}" class="bg-dark">{{ $user->name }}

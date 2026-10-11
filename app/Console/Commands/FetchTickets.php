@@ -43,13 +43,13 @@ class FetchTickets extends Command
 
         // Initialize Webklex IMAP Client
         $client = \Webklex\IMAP\Facades\Client::make([
-            'host'          => $host,
-            'port'          => $port,
-            'encryption'    => $enc === 'null' ? false : $enc,
+            'host' => $host,
+            'port' => $port,
+            'encryption' => $enc === 'null' ? false : $enc,
             'validate_cert' => true,
-            'username'      => $user,
-            'password'      => $pass,
-            'protocol'      => 'imap'
+            'username' => $user,
+            'password' => $pass,
+            'protocol' => 'imap',
         ]);
 
         try {
@@ -57,7 +57,7 @@ class FetchTickets extends Command
             $this->info("Connected to $host successfully.");
         } catch (\Exception $e) {
             $errorMsg = $e->getMessage();
-            
+
             if (str_contains($errorMsg, 'Application-specific password required')) {
                 $errorMsg .= "\n\nHINT: You are using Gmail with 2FA. You MUST use an 'App Password' instead of your regular password.\nGenerate one here: https://myaccount.google.com/apppasswords";
             }
@@ -82,7 +82,7 @@ class FetchTickets extends Command
         foreach ($messages as $message) {
             $subject = $message->getSubject();
             $fromEmail = $message->getFrom()[0]->mail;
-            
+
             // Prefer text body for clean formatting, fallback to HTML
             $body = $message->getTextBody();
             if ($body) {
@@ -108,8 +108,9 @@ class FetchTickets extends Command
                         'note' => $body ?: '(Empty Body)',
                         'type' => 'message', // Client message
                     ]);
-                    
+
                     $message->setFlag('Seen');
+
                     continue;
                 }
             }
@@ -135,6 +136,7 @@ class FetchTickets extends Command
                     }
 
                     $message->setFlag('Seen');
+
                     continue;
                 }
             }

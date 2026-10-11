@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Role;
 use App\Models\Status;
 use App\Models\Tag;
 use App\Models\Task;
 use App\Models\Ticket;
 use App\Models\User;
+use Illuminate\Database\Seeder;
 
 class ScalabilitySeeder extends Seeder
 {
@@ -34,7 +34,7 @@ class ScalabilitySeeder extends Seeder
         for ($i = 0; $i < 10; $i++) {
             $staff = User::factory()->count(100)->create([
                 'role_id' => $roleIds[0] ?? 1,
-                'is_approved' => 1
+                'is_approved' => 1,
             ]);
             $staffIds = $staffIds->merge($staff->pluck('id'));
         }
@@ -44,7 +44,7 @@ class ScalabilitySeeder extends Seeder
         for ($i = 0; $i < 20; $i++) {
             $clients = User::factory()->count(100)->create([
                 'role_id' => $roleIds[1] ?? 2,
-                'is_approved' => 1
+                'is_approved' => 1,
             ]);
             $clientIds = $clientIds->merge($clients->pluck('id'));
         }
@@ -54,11 +54,12 @@ class ScalabilitySeeder extends Seeder
             $tickets = Ticket::factory()->count(1000)->make()->map(function ($ticket) use ($clientIds, $staffIds) {
                 $ticket->user_id = $clientIds->random();
                 $ticket->assigned_to = $staffIds->random();
+
                 return $ticket->getAttributes();
             })->toArray();
-            
+
             Ticket::insert($tickets);
-            $this->command->info('Inserted ' . (($i + 1) * 1000) . ' tickets.');
+            $this->command->info('Inserted '.(($i + 1) * 1000).' tickets.');
         }
 
         $this->command->info('Creating 10k Tasks...');
@@ -67,11 +68,12 @@ class ScalabilitySeeder extends Seeder
                 $task->user_id = $clientIds->random();
                 $task->assigned_to = $staffIds->random();
                 $task->status_id = collect($statusIds)->random();
+
                 return $task->getAttributes();
             })->toArray();
 
             Task::insert($tasks);
-            $this->command->info('Inserted ' . (($i + 1) * 1000) . ' tasks.');
+            $this->command->info('Inserted '.(($i + 1) * 1000).' tasks.');
         }
 
         $this->command->info('Scalability Seeding Complete!');

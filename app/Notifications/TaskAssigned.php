@@ -29,7 +29,14 @@ class TaskAssigned extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail', 'database', Channels\FirebaseChannel::class];
+        $channels = ['database', Channels\FirebaseChannel::class];
+
+        $host = config('mail.mailers.smtp.host');
+        if (! empty($host) && $host !== 'mailpit' && $host !== '127.0.0.1' && $host !== 'localhost') {
+            $channels[] = 'mail';
+        }
+
+        return $channels;
     }
 
     /**
@@ -42,7 +49,7 @@ class TaskAssigned extends Notification implements ShouldQueue
             ->line('You have been assigned a new task.')
             ->line('Title: '.$this->task->title)
             ->line('Priority: '.$this->task->priority)
-            ->action('View Task', route('admin.tasks.show', $this->task->id))
+            ->action('View Task', route('details', $this->task->id))
             ->line('Thank you for using our application!');
     }
 

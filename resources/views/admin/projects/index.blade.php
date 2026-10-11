@@ -5,9 +5,11 @@
             <p class="text-low mb-0" style="font-size: 0.9rem;">Manage groups of tasks efficiently.</p>
         </div>
         <div class="d-flex gap-3">
-            <a href="{{ route('admin.projects.create') }}" class="btn-premium btn-premium-primary px-4 py-2 shadow-sm">
-                <i class="fas fa-plus-circle me-1"></i> New Project
-            </a>
+            @if(Auth::user()->hasPermission('projects.create'))
+                <a href="{{ route('admin.projects.create') }}" class="btn-premium btn-premium-primary px-4 py-2 shadow-sm">
+                    <i class="fas fa-plus-circle me-1"></i> New Project
+                </a>
+            @endif
         </div>
     </div>
 

@@ -10,12 +10,17 @@ class TeamController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::with('role')->where(function ($q) {
-            $q->where('role_id', '!=', 3)->orWhereNull('role_id');
-        });
+        $query = User::with('role');
 
         if ($request->filled('name')) {
             $query->where('name', 'like', '%'.$request->name.'%');
+        }
+
+        if ($request->filled('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('email', 'like', '%'.$request->search.'%');
+            });
         }
 
         if ($request->filled('email')) {
@@ -39,7 +44,7 @@ class TeamController extends Controller
             $query->whereDate('updated_at', $request->updated_at);
         }
 
-        $users = $query->paginate(15);
+        $users = $query->paginate(request('per_page', 15));
         $roles = Role::all();
 
         return view('admin.users.index', compact('users', 'roles'));
@@ -49,7 +54,7 @@ class TeamController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'email' => 'required|string|email|max:255|unique:users|unique:clients',
             'password' => 'required|string|min:8',
             'role_id' => 'nullable|exists:roles,id',
         ]);
@@ -71,7 +76,7 @@ class TeamController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email,'.$user->id,
+            'email' => 'required|string|email|max:255|unique:users,email,'.$user->id.'|unique:clients',
             'role_id' => 'nullable|exists:roles,id',
         ]);
 
@@ -165,7 +170,16 @@ class TeamController extends Controller
 
     public function roles()
     {
-        $roles = Role::withCount('users')->paginate(15);
+        $query = Role::withCount('users');
+
+        if ($search = request('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('slug', 'like', "%{$search}%");
+            });
+        }
+
+        $roles = $query->latest('id')->paginate(request('per_page', 15))->withQueryString();
 
         return view('admin.roles.index', compact('roles'));
     }
@@ -178,7 +192,11 @@ class TeamController extends Controller
             'permissions' => 'nullable|array',
         ]);
 
-        Role::create($request->all());
+        Role::create([
+            'name' => $request->name,
+            'slug' => $request->slug,
+            'permissions' => $request->input('permissions', []),
+        ]);
 
         return back()->with('success', 'Role created successfully.');
     }
@@ -192,7 +210,11 @@ class TeamController extends Controller
             'permissions' => 'nullable|array',
         ]);
 
-        $role->update($request->all());
+        $role->update([
+            'name' => $request->name,
+            'slug' => $request->slug,
+            'permissions' => $request->input('permissions', []),
+        ]);
 
         return back()->with('success', 'Role updated successfully.');
     }
@@ -206,5 +228,37 @@ class TeamController extends Controller
         $role->delete();
 
         return back()->with('success', 'Role deleted successfully.');
+    }
+
+    public function bulkRoleAction(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (empty($ids)) {
+            return back()->with('error', 'No roles selected.');
+        }
+
+        $action = $request->input('action');
+        if ($action === 'delete') {
+            if (! auth()->user()->hasRole('super-admin') && ! auth()->user()->hasPermission('roles.delete')) {
+                abort(403, 'Unauthorized action.');
+            }
+
+            $protectedSlugs = ['super-admin', 'manager', 'client', 'hr-manager'];
+            $roles = Role::whereIn('id', $ids)
+                ->whereNotIn('slug', $protectedSlugs)
+                ->doesntHave('users')
+                ->get();
+
+            $deletedCount = $roles->count();
+            if ($deletedCount === 0) {
+                return back()->with('error', 'None of the selected roles could be deleted (they may be protected or assigned to users).');
+            }
+
+            Role::whereIn('id', $roles->pluck('id'))->delete();
+
+            return back()->with('success', "{$deletedCount} role(s) deleted successfully.");
+        }
+
+        return back()->with('error', 'Invalid action.');
     }
 }

@@ -36,15 +36,13 @@ return [
     ],
 
     'firebase' => [
-        'server_key' => env('FCM_SERVER_KEY'),
-        'api_key' => env('VITE_FIREBASE_API_KEY'),
-        'auth_domain' => env('VITE_FIREBASE_AUTH_DOMAIN'),
-        'project_id' => env('VITE_FIREBASE_PROJECT_ID'),
-        'storage_bucket' => env('VITE_FIREBASE_STORAGE_BUCKET'),
-        'messaging_sender_id' => env('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-        'app_id' => env('VITE_FIREBASE_APP_ID'),
-        'measurement_id' => env('VITE_FIREBASE_MEASUREMENT_ID'),
-        'vapid_key' => env('VITE_FIREBASE_VAPID_KEY'),
+        'api_key' => env('FIREBASE_API_KEY', env('VITE_FIREBASE_API_KEY')),
+        'auth_domain' => env('FIREBASE_AUTH_DOMAIN', env('VITE_FIREBASE_AUTH_DOMAIN')),
+        'project_id' => env('FIREBASE_PROJECT_ID', env('VITE_FIREBASE_PROJECT_ID')),
+        'storage_bucket' => env('FIREBASE_STORAGE_BUCKET', env('VITE_FIREBASE_STORAGE_BUCKET')),
+        'messaging_sender_id' => env('FIREBASE_MESSAGING_SENDER_ID', env('VITE_FIREBASE_MESSAGING_SENDER_ID')),
+        'app_id' => env('FIREBASE_APP_ID', env('VITE_FIREBASE_APP_ID')),
+        'measurement_id' => env('FIREBASE_MEASUREMENT_ID', env('VITE_FIREBASE_MEASUREMENT_ID')),
+        'vapid_key' => env('FIREBASE_VAPID_KEY', env('VITE_FIREBASE_VAPID_KEY')),
     ],
-
 ];

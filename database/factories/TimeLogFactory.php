@@ -19,7 +19,7 @@ class TimeLogFactory extends Factory
     public function definition(): array
     {
         $start = $this->faker->dateTimeBetween('-1 year', 'now');
-        $end = (clone $start)->modify('+' . rand(30, 240) . ' minutes');
+        $end = (clone $start)->modify('+'.rand(30, 240).' minutes');
         $duration = $end->getTimestamp() - $start->getTimestamp();
 
         return [

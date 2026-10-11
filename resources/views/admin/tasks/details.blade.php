@@ -14,7 +14,11 @@
             </div>
         </div>
         <div class="d-flex gap-2">
-            @if ($activeTimer)
+            @php
+                $canStartTimer = Auth::id() == $task->assigned_to;
+            @endphp
+            @if($canStartTimer)
+                @if ($activeTimer)
                 <form action="{{ route('tasks.stop_timer', $task->id) }}" method="POST" class="d-inline">
                     @csrf
                     <button type="submit" class="btn-premium py-2 px-4 shadow-sm"
@@ -25,13 +29,22 @@
                     </button>
                     <input type="hidden" id="startTimeValue" value="{{ $activeTimer->start_time->toIso8601String() }}">
                 </form>
-            @else
+                @elseif($globalActiveTimer && $globalActiveTimer->task_id != $task->id)
+                <button type="button" class="btn-premium btn-premium-primary py-2 px-4 shadow-sm" 
+                    data-bs-toggle="modal" data-bs-target="#switchTimerModal">
+                    <i class="fas fa-play me-2"></i> Start Timer
+                </button>
+                <form id="forceStartForm" action="{{ route('tasks.start_timer', $task->id) }}?force=1" method="POST" class="d-none">
+                    @csrf
+                </form>
+                @else
                 <form action="{{ route('tasks.start_timer', $task->id) }}" method="POST" class="d-inline">
                     @csrf
                     <button type="submit" class="btn-premium btn-premium-primary py-2 px-4 shadow-sm">
                         <i class="fas fa-play me-2"></i> Start Timer
                     </button>
                 </form>
+                @endif
             @endif
 
             <a href="{{ route('edit', $task->id) }}" class="btn-premium btn-premium-secondary py-2 px-4">
@@ -115,7 +128,7 @@
                 </div>
 
                 <h6 class="text-muted uppercase extra-small mb-3">Description</h6>
-                <div class="text-main-50 lh-lg mb-5 ck-content" style="white-space: pre-wrap;">{!! $task->description !!}
+                <div class="text-main-50 mb-5 ck-content">{!! $task->description !!}
                 </div>
 
                 <div class="row mb-5 g-4">
@@ -218,7 +231,7 @@
                                     <div class="position-relative">
                                         <div class="avatar-premium"
                                             style="width: 32px; height: 32px; font-size: 0.8rem; background: {{ $log->type == 'message' ? 'rgba(var(--primary-rgb), 0.1)' : 'var(--bg-input)' }}; color: {{ $log->type == 'message' ? 'var(--primary)' : 'var(--text-medium)' }};">
-                                            {{ substr($log->user->name, 0, 1) }}
+                                            {{ substr(($log->user ? $log->user->name : ($log->client ? $log->client->name : 'System')), 0, 1) }}
                                         </div>
                                         @if (!$loop->last)
                                             <div class="position-absolute start-50 top-100 border-start border-secondary border-opacity-25"
@@ -227,7 +240,7 @@
                                     </div>
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
-                                            <span class="fw-bold text-high small">{{ $log->user->name }}</span>
+                                            <span class="fw-bold text-high small">{{ ($log->user ? $log->user->name : ($log->client ? $log->client->name : 'System')) }}</span>
                                             <span
                                                 class="text-low extra-small">{{ $log->created_at->diffForHumans() }}</span>
                                         </div>
@@ -263,7 +276,7 @@
                                         <div class="d-flex align-items-center gap-3">
                                             <i class="fas fa-tasks text-muted small"></i>
                                             <div>
-                                                <a href="{{ route('show', $subtask->id) }}"
+                                                <a href="{{ route('details', $subtask->id) }}"
                                                     class="text-main fw-medium text-decoration-none">
                                                     {{ $subtask->title }}
                                                 </a>
@@ -377,7 +390,7 @@
                                                     {{ $attachment->file_name }}
                                                 </div>
                                                 <div class="extra-small text-muted">
-                                                    {{ round($attachment->file_size / 1024, 1) }} KB •
+                                                    {{ round($attachment->file_size / 1024, 1) }} KB â€¢
                                                     {{ $attachment->user->name }}
                                                 </div>
                                             </div>
@@ -410,7 +423,7 @@
                         </div>
                         <div class="overflow-hidden">
                             <div class="extra-small text-muted">Blocks this task</div>
-                            <a href="{{ route('show', $dep->blocker->id) }}"
+                            <a href="{{ route('details', $dep->blocker->id) }}"
                                 class="text-main small fw-medium text-decoration-none text-truncate d-block">
                                 {{ $dep->blocker->title }}
                             </a>
@@ -433,10 +446,24 @@
                 </div>
                 <div class="mb-0">
                     <div class="text-muted small">Owner</div>
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <div class="avatar" style="width: 24px; height: 24px; font-size: 0.6rem;">
-                            {{ substr(Auth::user()->name, 0, 1) }}</div>
-                        <span class="text-main small">{{ Auth::user()->name }}</span>
+                    <div class="d-inline-flex align-items-center gap-2 rounded-pill px-2 py-1 border border-secondary">
+                        <div class="avatar-premium" style="width: 24px; height: 24px; font-size: 0.6rem;">
+                            {{ substr($task->assignedTo->name ?? 'Unassigned', 0, 1) }}</div>
+                        <span class="text-main small">{{ $task->assignedTo->name ?? 'Unassigned' }}</span>
+                    </div>
+                </div>
+                <div class="mb-0 mt-3">
+                    <div class="text-muted small">Followers</div>
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                        @forelse($task->users as $follower)
+                            <div class="d-flex align-items-center gap-2 rounded-pill px-2 py-1 border border-secondary">
+                                <div class="avatar-premium" style="width: 24px; height: 24px; font-size: 0.6rem;">
+                                    {{ substr($follower->name, 0, 1) }}</div>
+                                <span class="text-main small">{{ $follower->name }}</span>
+                            </div>
+                        @empty
+                            <span class="text-muted small italic">No followers</span>
+                        @endforelse
                     </div>
                 </div>
             </div>
@@ -540,6 +567,33 @@
             color: rgba(255, 255, 255, 0.5) !important;
         }
     </style>
+
+    @if(isset($globalActiveTimer) && $globalActiveTimer && $globalActiveTimer->task_id != $task->id)
+    <!-- Switch Timer Modal -->
+    <div class="modal fade" id="switchTimerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-premium" style="border-radius: 20px; border: 1px solid var(--border-subtle); background: var(--bg-surface); backdrop-filter: blur(20px);">
+                <div class="modal-header border-0 px-4 pt-4 pb-0">
+                    <h5 class="modal-title fw-bold text-high">Active Timer Detected</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 py-4">
+                    <p class="text-medium mb-3">You already have an active timer running for task:</p>
+                    <div class="p-3 mb-3" style="background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-main);">
+                        <div class="fw-bold text-primary">{{ $globalActiveTimer->task->title ?? 'Unknown Task' }}</div>
+                    </div>
+                    <p class="text-medium mb-0">Do you want to stop that timer and start a new one for this task?</p>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4 pt-0">
+                    <button type="button" class="btn-premium btn-premium-secondary py-2 px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn-premium py-2 px-4" style="background: var(--primary); color: white;" onclick="document.getElementById('forceStartForm').submit();">
+                        <i class="fas fa-exchange-alt me-2"></i> Switch Timer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <script>
         setTimeout(function() {

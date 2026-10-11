@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Ticket extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'ticket_number',
         'subject',
@@ -15,8 +16,10 @@ class Ticket extends Model
         'status',
         'priority',
         'user_id',
+        'client_id',
         'assigned_to',
         'email_source',
+        'message_id',
         'attachments',
     ];
 
@@ -35,6 +38,11 @@ class Ticket extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function assignedTo()
     {
         return $this->belongsTo(User::class, 'assigned_to');
@@ -50,4 +58,3 @@ class Ticket extends Model
         return $this->hasMany(Task::class);
     }
 }
-

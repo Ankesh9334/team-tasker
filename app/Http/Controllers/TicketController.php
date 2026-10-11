@@ -16,11 +16,36 @@ class TicketController extends Controller
     {
         $query = Ticket::with('user', 'assignedTo')->latest();
 
-        if ($request->has('priority')) {
+        $user = auth()->user();
+        $isTicketAdmin = $user->hasRole('super-admin') || $user->hasRole('admin') || $user->hasPermission('tickets.view_all');
+        if (! $isTicketAdmin) {
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)->orWhere('assigned_to', $user->id);
+            });
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('subject', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('ticket_number', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('assigned_to')) {
+            $assignedTo = $request->assigned_to;
+            $ids = is_array($assignedTo) ? array_filter($assignedTo) : [$assignedTo];
+            if (! empty($ids)) {
+                $query->whereIn('assigned_to', $ids);
+            }
+        }
+
+        if ($request->filled('priority')) {
             $query->where('priority', $request->priority);
         }
 
-        if ($request->has('status')) {
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
@@ -32,14 +57,15 @@ class TicketController extends Controller
             $query->whereDate('updated_at', $request->updated_at);
         }
 
-        $tickets = $query->paginate(15);
+        $tickets = $query->paginate(request('per_page', 15));
+        $allUsers = User::select('id', 'name', 'email')->orderBy('name')->get();
 
-        return view('admin.tickets.index', compact('tickets'));
+        return view('admin.tickets.index', compact('tickets', 'allUsers'));
     }
 
     public function create()
     {
-        $clients = User::select('id', 'name', 'email')->where('role_id', 3)->orderBy('name')->get();
+        $clients = \App\Models\Client::select('id', 'name', 'email')->orderBy('name')->get();
         $staff = User::select('id', 'name')->where('role_id', '!=', 3)->orderBy('name')->get();
 
         return view('admin.tickets.create', compact('clients', 'staff'));
@@ -62,7 +88,7 @@ class TicketController extends Controller
         }
 
         Ticket::create([
-            'user_id' => $request->client_id,
+            'client_id' => $request->client_id,
             'subject' => $request->subject,
             'priority' => $request->priority,
             'body' => $request->body,
@@ -78,9 +104,9 @@ class TicketController extends Controller
     {
         $ticket = Ticket::with(['user', 'assignedTo', 'replies.user'])->findOrFail($id);
         $users = User::select('id', 'name')->where('role_id', '!=', 3)->orderBy('name')->get(); // Assuming 3 is client, list staff for assignment
-        // Actually I should check roles properly or just list all non-clients
+        $projects = \App\Models\Project::all();
 
-        return view('admin.tickets.show', compact('ticket', 'users'));
+        return view('admin.tickets.show', compact('ticket', 'users', 'projects'));
     }
 
     public function storeReply(Request $request, $id)
@@ -170,19 +196,31 @@ class TicketController extends Controller
         return back()->with('success', 'Ticket assigned successfully.');
     }
 
-    public function convertToTask($id)
+    public function convertToTask(Request $request, $id)
     {
         $ticket = Ticket::findOrFail($id);
 
         $task = \App\Models\Task::create([
             'ticket_id' => $ticket->id,
             'user_id' => Auth::id(), // Created by current staff
+            'client_id' => $ticket->client_id,
             'assigned_to' => $ticket->assigned_to,
             'title' => $ticket->subject,
             'description' => $ticket->body,
             'status_id' => \App\Models\Status::where('is_default', true)->first()?->id,
             'priority' => $ticket->priority,
+            'project_id' => $request->project_id,
         ]);
+
+        if ($request->project_id) {
+            $project = \App\Models\Project::with('users')->find($request->project_id);
+            if ($project) {
+                $projectManagerIds = $project->users->pluck('id')->toArray();
+                if (! empty($projectManagerIds)) {
+                    $task->users()->sync($projectManagerIds);
+                }
+            }
+        }
 
         return back()->with('success', 'Ticket converted to task successfully. Task ID: '.$task->id);
     }

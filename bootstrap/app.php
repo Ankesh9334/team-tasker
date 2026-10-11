@@ -15,12 +15,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermissions::class,
         ]);
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/email/inbound',
+            'upload-chunk',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule) {
-        $schedule->command('tasks:process-recurring')->daily();
-        $schedule->command('tasks:process-sla')->hourly();
+        // $schedule->command('tasks:process-recurring')->daily();
+        // $schedule->command('tasks:process-sla')->hourly();
         $schedule->command('tickets:fetch')->everyMinute();
+        // $schedule->command('tasks:summarize-ai')->dailyAt('18:00');
     })->create();

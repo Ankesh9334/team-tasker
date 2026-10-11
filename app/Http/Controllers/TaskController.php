@@ -27,21 +27,75 @@ class TaskController extends Controller
     /**
      * Display the Global Task Activity Feed.
      */
-    public function activity()
+    public function activity(Request $request)
     {
         $userId = \Illuminate\Support\Facades\Auth::id();
-        $query = \App\Models\TaskLog::with(['task', 'user'])->latest();
+        $query = \App\Models\TaskLog::with(['task', 'project', 'user', 'client'])->latest();
 
-        // If not an admin with view_all permission, filter tasks user can see
-        if (!\Illuminate\Support\Facades\Auth::user()->hasPermission('tasks.view_all')) {
-            $query->whereHas('task', function ($q) use ($userId) {
-                $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+        // If not an admin with view_all permission, filter tasks and projects user can see
+        if (! \Illuminate\Support\Facades\Auth::user()->hasPermission('tasks.view_all')) {
+            $query->where(function ($q) use ($userId) {
+                $q->whereHas('task', function ($q) use ($userId) {
+                    $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+                })->orWhereHas('project', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                });
             });
         }
 
-        $activities = $query->paginate(20);
+        // Filter by user(s)
+        $filterUser = $request->input('user_id');
+        if (! empty($filterUser)) {
+            if (is_array($filterUser)) {
+                $cleanUserIds = array_values(array_filter(array_map('intval', $filterUser)));
+                if (! empty($cleanUserIds)) {
+                    $query->whereIn('user_id', $cleanUserIds);
+                }
+            } else {
+                $query->where('user_id', (int) $filterUser);
+            }
+        }
 
-        return view('admin.tasks.activity', compact('activities'));
+        // Filter by search keyword
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('note', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                    ->orWhereHas('task', fn ($tq) => $tq->where('title', 'like', "%{$search}%"))
+                    ->orWhereHas('project', fn ($pq) => $pq->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        // Filter by date
+        if ($date = $request->input('date')) {
+            $query->whereDate('created_at', $date);
+        }
+
+        // Base metrics query (before type filter so stats cards stay comprehensive)
+        $baseForStats = clone $query;
+        $totalCount = (clone $baseForStats)->count();
+        $systemLogsCount = (clone $baseForStats)->where('type', 'log')->count();
+        $clientMessagesCount = (clone $baseForStats)->where('type', 'message')->count();
+        $activeUsersCount = (clone $baseForStats)->whereNotNull('user_id')->distinct('user_id')->count('user_id');
+
+        $activityStats = [
+            'total' => $totalCount,
+            'logs' => $systemLogsCount,
+            'messages' => $clientMessagesCount,
+            'users' => $activeUsersCount,
+        ];
+
+        // Filter by activity type (log vs message)
+        if ($type = $request->input('type')) {
+            $query->where('type', $type);
+        }
+
+        $perPage = (int) $request->input('per_page', 20);
+        $activities = $query->paginate($perPage > 0 ? $perPage : 20)->withQueryString();
+
+        $users = User::orderBy('name')->get(['id', 'name', 'email', 'profile_image']);
+
+        return view('admin.tasks.activity', compact('activities', 'users', 'activityStats'));
     }
 
     /**
@@ -68,7 +122,8 @@ class TaskController extends Controller
         $userId = Auth::id();
         $tasks = Task::where(function ($q) use ($userId) {
             $q->where('user_id', $userId)
-                ->orWhere('assigned_to', $userId);
+                ->orWhere('assigned_to', $userId)
+                ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
         })
             ->whereNotNull('deadline')
             ->get();
@@ -106,7 +161,8 @@ class TaskController extends Controller
         $tasks = Task::with('dependencies')
             ->where(function ($q) use ($userId) {
                 $q->where('user_id', $userId)
-                    ->orWhere('assigned_to', $userId);
+                    ->orWhere('assigned_to', $userId)
+                    ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
             })
             ->whereNotNull('deadline')
             ->get();
@@ -134,31 +190,81 @@ class TaskController extends Controller
     }
 
     /**
+     * API for searching users (AJAX)
+     */
+    public function searchUsers(Request $request)
+    {
+        $search = $request->get('q', '');
+        $page = $request->get('page', 1);
+
+        $query = \App\Models\User::query();
+
+        if (! empty($search)) {
+            $query->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+        }
+
+        $users = $query->select('id', 'name', 'role_id')->paginate(20, ['*'], 'page', $page);
+
+        $formattedUsers = $users->map(function ($user) {
+            $roleLabel = $user->role_id == 1 ? 'Admin' : 'User';
+
+            return [
+                'id' => $user->id,
+                'name' => "{$user->name} ({$roleLabel})",
+            ];
+        });
+
+        return response()->json([
+            'items' => $formattedUsers,
+            'total_count' => $users->total(),
+            'has_more' => $users->hasMorePages(),
+            'next_page' => $users->hasMorePages() ? $page + 1 : null,
+        ]);
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function dashboard()
     {
-        if (Auth::user()->role_id == 3) { // Client Role
+        if (Auth::guard('client')->check()) {
             return redirect()->route('client.dashboard');
         }
 
         $userId = Auth::user()->id;
-        // Admins and Managers see everything. Others see only their assigned/owned items.
-        $isAdmin = Auth::user()->hasRole('admin') || Auth::user()->hasRole('manager') || Auth::user()->hasPermission('tasks.view_all');
+        // Admins see everything. Others see only their assigned/owned items.
+        $isAdmin = Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin') || Auth::user()->hasPermission('tasks.view_all');
+        $isTicketAdmin = Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin') || Auth::user()->hasPermission('tickets.view_all');
+
+        $viewUserId = request('view_user_id');
+        $viewUser = null;
+
+        // Impersonation for dashboard metrics
+        if ($viewUserId && (Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin'))) {
+            $userId = $viewUserId;
+            $isAdmin = false; // Act as standard user to filter metrics
+            $isTicketAdmin = false;
+            $viewUser = \App\Models\User::find($userId);
+        }
 
         // Personal tasks for the list
         $personalTasks = Task::with(['user', 'assignedTo', 'status'])
             ->where(function ($q) use ($userId) {
-                $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+                $q->where('user_id', $userId)
+                    ->orWhere('assigned_to', $userId)
+                    ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
             })
             ->orderBy('created_at', 'desc')
             ->take(5)
             ->get();
 
         $taskQuery = Task::query();
-        if (!$isAdmin) {
+        if (! $isAdmin) {
             $taskQuery->where(function ($q) use ($userId) {
-                $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+                $q->where('user_id', $userId)
+                    ->orWhere('assigned_to', $userId)
+                    ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
             });
         }
 
@@ -169,26 +275,46 @@ class TaskController extends Controller
         })->count();
 
         $pendingTasksCount = $totalTasks - $completedTasksCount;
-        
+
         $ticketQuery = \App\Models\Ticket::query();
-        if (!$isAdmin) {
+        if (! $isTicketAdmin) {
             $ticketQuery->where(function ($q) use ($userId) {
                 $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
             });
         }
         $totalTickets = $ticketQuery->count();
-        
+
         $totalUsers = \App\Models\User::count();
-        $totalProjects = \App\Models\Project::count();
+        $projectQuery = \App\Models\Project::query();
+        if (! $isAdmin) {
+            $projectQuery->where(function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                    ->orWhereHas('tasks', function ($q2) use ($userId) {
+                        $q2->where('assigned_to', $userId);
+                    });
+            });
+        }
+        $totalProjects = $projectQuery->count();
         $criticalTasksCount = (clone $taskQuery)->where('priority', 'Critical')->count();
 
         $projectProgress = $totalTasks > 0 ? (clone $taskQuery)->avg('progress') : 0;
 
         // Recent Activity
-        $activityQuery = \App\Models\TaskLog::with(['user', 'task']);
-        if (!$isAdmin) {
-            $activityQuery->whereHas('task', function ($q) use ($userId) {
-                $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+        $activityQuery = \App\Models\TaskLog::with(['user', 'task', 'project']);
+
+        if ($viewUserId && (Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin'))) {
+            // When an admin is viewing AS a specific user, show the activity performed BY that user
+            $activityQuery->where('user_id', $userId);
+        } elseif (! $isAdmin) {
+            // Standard user logic: show activity on tasks/projects they are involved in
+            $activityQuery->where(function ($q) use ($userId) {
+                $q->whereHas('task', function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                        ->orWhere('assigned_to', $userId)
+                        ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
+                })->orWhereHas('project', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                });
             });
         }
         $recentActivities = $activityQuery->latest()->take(6)->get();
@@ -202,6 +328,21 @@ class TaskController extends Controller
         // Default view: Last 7 days
         $chartData = $chart7d['data'];
         $chartLabels = $chart7d['labels'];
+
+        $allUsers = \App\Models\User::all(); // For the dropdown
+
+        // Attendance Integrations
+        $attendanceService = app(\App\Services\AttendanceService::class);
+        $todayStr = $attendanceService->today()->format('Y-m-d');
+        $attendanceStats = $isAdmin ? $attendanceService->getDailyStats($todayStr) : null;
+
+        $currentUser = $viewUser ?: Auth::user();
+        $userAttendanceToday = \App\Models\Attendance::where('user_id', $currentUser->id)
+            ->where(function ($q) use ($todayStr) {
+                $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
+            })
+            ->first();
+        $userMonthlyStats = $attendanceService->getMonthlyUserStats($currentUser, $attendanceService->today()->format('Y-m'));
 
         return view('admin.dashboard', compact(
             'personalTasks',
@@ -219,7 +360,14 @@ class TaskController extends Controller
             'chart7d',
             'chart30d',
             'chart90d',
-            'chartAll'
+            'chartAll',
+            'viewUser',
+            'allUsers',
+            'isAdmin',
+            'isTicketAdmin',
+            'attendanceStats',
+            'userAttendanceToday',
+            'userMonthlyStats'
         ));
     }
 
@@ -236,9 +384,11 @@ class TaskController extends Controller
                 $date = now()->subDays($i);
                 $labels[] = $date->format($labelFormat);
                 $query = Task::whereDate('created_at', $date->toDateString());
-                if (!$isAdmin) {
-                    $query->where(function($q) use ($userId) {
-                        $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+                if (! $isAdmin) {
+                    $query->where(function ($q) use ($userId) {
+                        $q->where('user_id', $userId)
+                            ->orWhere('assigned_to', $userId)
+                            ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
                     });
                 }
                 $data[] = $query->count();
@@ -250,9 +400,11 @@ class TaskController extends Controller
                 $end = now()->subWeeks($i)->endOfWeek();
                 $labels[] = $start->format($labelFormat);
                 $query = Task::whereBetween('created_at', [$start, $end]);
-                if (!$isAdmin) {
-                    $query->where(function($q) use ($userId) {
-                        $q->where('user_id', $userId)->orWhere('assigned_to', $userId);
+                if (! $isAdmin) {
+                    $query->where(function ($q) use ($userId) {
+                        $q->where('user_id', $userId)
+                            ->orWhere('assigned_to', $userId)
+                            ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
                     });
                 }
                 $data[] = $query->count();
@@ -281,9 +433,11 @@ class TaskController extends Controller
         while ($start->lessThanOrEqualTo($end)) {
             $labels[] = $start->format('M Y');
             $q = Task::whereYear('created_at', $start->year)->whereMonth('created_at', $start->month);
-            if (!$isAdmin) {
-                $q->where(function($sq) use ($userId) {
-                    $sq->where('user_id', $userId)->orWhere('assigned_to', $userId);
+            if (! $isAdmin) {
+                $q->where(function ($sq) use ($userId) {
+                    $sq->where('user_id', $userId)
+                        ->orWhere('assigned_to', $userId)
+                        ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $userId));
                 });
             }
             $data[] = $q->count();
@@ -298,16 +452,46 @@ class TaskController extends Controller
      */
     public function create(Request $request)
     {
-        $users = User::all();
+        ini_set('memory_limit', '256M');
+
+        $selectedProjectId = $request->get('project_id');
+        $selectedParentId = $request->get('parent_id');
+
+        // Staff users with eager loaded role, selecting only required columns
+        $users = User::select('id', 'name', 'role_id')
+            ->where(function ($q) {
+                $q->whereNull('role_id')->orWhere('role_id', '!=', 3);
+            })
+            ->with('role:id,name')
+            ->orderBy('name')
+            ->get();
+
         $statuses = Status::orderBy('order')->get();
         $tags = Tag::all();
-        $parentTasks = Task::whereNull('parent_id')->get();
-        $allTasks = Task::all();
+
+        // Top-level parent tasks scoped by project or latest 100
+        $parentTasksQuery = Task::whereNull('parent_id');
+        if ($selectedProjectId) {
+            $parentTasksQuery->where('project_id', $selectedProjectId);
+        }
+        $parentTasks = $parentTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
+        if ($selectedParentId && ! $parentTasks->contains('id', $selectedParentId)) {
+            $currentParent = Task::select('id', 'title')->find($selectedParentId);
+            if ($currentParent) {
+                $parentTasks->prepend($currentParent);
+            }
+        }
+
+        // All tasks for blockers/dependencies scoped by project or latest 100
+        $allTasksQuery = Task::query();
+        if ($selectedProjectId) {
+            $allTasksQuery->where('project_id', $selectedProjectId);
+        }
+        $allTasks = $allTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
+
         $priorities = ['Low', 'Medium', 'High', 'Critical'];
         $templates = TaskTemplate::where('is_active', true)->get();
-        $projects = \App\Models\Project::all();
-
-        $selectedParentId = $request->get('parent_id');
+        $projects = \App\Models\Project::select('id', 'name')->orderBy('name')->get();
 
         return view('admin.tasks.create', compact('users', 'statuses', 'tags', 'parentTasks', 'allTasks', 'priorities', 'selectedParentId', 'templates', 'projects'));
     }
@@ -350,8 +534,22 @@ class TaskController extends Controller
             'deadline' => $request->deadline,
             'is_recurring' => $request->boolean('is_recurring'),
             'recurring_interval' => $request->recurring_interval,
+            'project_id' => $request->project_id,
             'completed_at' => ($status && $status->is_completed) ? now() : null,
         ]);
+
+        $additionalUsers = $request->additional_users ?? [];
+        if ($request->project_id) {
+            $project = \App\Models\Project::with('users')->find($request->project_id);
+            if ($project) {
+                $projectManagerIds = $project->users->pluck('id')->toArray();
+                $additionalUsers = array_unique(array_merge($additionalUsers, $projectManagerIds));
+            }
+        }
+
+        if (! empty($additionalUsers)) {
+            $task->users()->sync($additionalUsers);
+        }
 
         // Notify Assigned User
         if ($task->assigned_to && $task->assigned_to != Auth::id()) {
@@ -404,15 +602,22 @@ class TaskController extends Controller
             'dependencies.blocker.status',
             'attachments.user',
             'tags',
+            'users',
         ])->findOrFail($id);
 
         $activeTimer = TimeLog::where('task_id', $task->id)
             ->where('user_id', Auth::id())
             ->whereNull('end_time')
             ->first();
+
+        $globalActiveTimer = TimeLog::with('task')
+            ->where('user_id', Auth::id())
+            ->whereNull('end_time')
+            ->first();
+
         $statuses = Status::orderBy('order')->get();
 
-        return view('admin.tasks.details', compact('task', 'activeTimer', 'statuses'));
+        return view('admin.tasks.details', compact('task', 'activeTimer', 'globalActiveTimer', 'statuses'));
     }
 
     /**
@@ -420,17 +625,65 @@ class TaskController extends Controller
      */
     public function edit($id)
     {
-        $task = Task::with(['tags', 'dependencies', 'attachments'])->findOrFail($id);
+        ini_set('memory_limit', '256M');
 
-        $users = User::all();
+        $task = Task::with(['tags', 'dependencies', 'attachments', 'users'])->findOrFail($id);
+        $taskUsers = $task->users->pluck('id')->toArray();
+
+        // Selected user IDs that must be present in the dropdown
+        $selectedUserIds = array_filter(array_unique(array_merge(
+            [$task->assigned_to],
+            $taskUsers
+        )));
+
+        // Staff users with eager loaded role, selecting only required columns
+        $users = User::select('id', 'name', 'role_id')
+            ->where(function ($q) use ($selectedUserIds) {
+                $q->where(function ($sq) {
+                    $sq->whereNull('role_id')->orWhere('role_id', '!=', 3);
+                });
+                if (! empty($selectedUserIds)) {
+                    $q->orWhereIn('id', $selectedUserIds);
+                }
+            })
+            ->with('role:id,name')
+            ->orderBy('name')
+            ->get();
+
         $statuses = Status::orderBy('order')->get();
         $tags = Tag::all();
-        $parentTasks = Task::whereNull('parent_id')->where('id', '!=', $id)->get();
-        $allTasks = Task::where('id', '!=', $id)->get();
+
+        // Parent tasks for subtasks: scoped by project or latest 100
+        $parentTasksQuery = Task::whereNull('parent_id')->where('id', '!=', $id);
+        if ($task->project_id) {
+            $parentTasksQuery->where('project_id', $task->project_id);
+        }
+        $parentTasks = $parentTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
+        if ($task->parent_id && ! $parentTasks->contains('id', $task->parent_id)) {
+            $currentParent = Task::select('id', 'title')->find($task->parent_id);
+            if ($currentParent) {
+                $parentTasks->prepend($currentParent);
+            }
+        }
+
+        // All tasks for blockers/dependencies: scoped by project or latest 100
+        $depIds = $task->dependencies->pluck('depends_on_id')->toArray();
+        $allTasksQuery = Task::where('id', '!=', $id);
+        if ($task->project_id) {
+            $allTasksQuery->where('project_id', $task->project_id);
+        }
+        $allTasks = $allTasksQuery->select('id', 'title')->latest('id')->limit(100)->get();
+        if (! empty($depIds)) {
+            $missingDepIds = array_diff($depIds, $allTasks->pluck('id')->toArray());
+            if (! empty($missingDepIds)) {
+                $missingTasks = Task::whereIn('id', $missingDepIds)->select('id', 'title')->get();
+                $allTasks = $allTasks->concat($missingTasks);
+            }
+        }
+
         $priorities = ['Low', 'Medium', 'High', 'Critical'];
         $templates = TaskTemplate::where('is_active', true)->get();
-        $projects = \App\Models\Project::all();
-        $taskUsers = $task->users->pluck('id')->toArray();
+        $projects = \App\Models\Project::select('id', 'name')->orderBy('name')->get();
 
         return view('admin.tasks.edit', compact('task', 'users', 'statuses', 'tags', 'parentTasks', 'allTasks', 'priorities', 'templates', 'projects', 'taskUsers'));
     }
@@ -486,7 +739,23 @@ class TaskController extends Controller
             'is_recurring' => $request->boolean('is_recurring'),
             'recurring_interval' => $request->recurring_interval,
             'completed_at' => $completed_at,
+            'project_id' => $request->project_id,
         ]);
+
+        $additionalUsers = $request->additional_users ?? [];
+        if ($request->project_id) {
+            $project = \App\Models\Project::with('users')->find($request->project_id);
+            if ($project) {
+                $projectManagerIds = $project->users->pluck('id')->toArray();
+                $additionalUsers = array_unique(array_merge($additionalUsers, $projectManagerIds));
+            }
+        }
+
+        if (! empty($additionalUsers)) {
+            $task->users()->sync($additionalUsers);
+        } else {
+            $task->users()->detach();
+        }
 
         // Notify Assigned User if changed
         if ($task->wasChanged('assigned_to') && $task->assigned_to && $task->assigned_to != Auth::id()) {
@@ -495,10 +764,6 @@ class TaskController extends Controller
 
         if ($request->has('tags')) {
             $task->tags()->sync($request->tags);
-        }
-
-        if ($request->has('additional_users')) {
-            $task->users()->sync($request->additional_users);
         }
 
         if ($request->has('dependencies')) {

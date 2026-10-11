@@ -22,7 +22,7 @@ class CheckPermissions
         $user = \Auth::user();
 
         // Block clients from accessing ANY admin routes (except client portal)
-        if ($user->role_id == 3 && $request->is('admin/*')) {
+        if (isset($user->role_id) && $user->role_id == 3 && $request->is('admin/*')) {
             abort(403, 'Unauthorized access to admin area.');
         }
 

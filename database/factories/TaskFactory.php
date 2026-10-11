@@ -16,7 +16,7 @@ class TaskFactory extends Factory
             'deadline' => $this->faker->dateTimeBetween('now', '+1 year')->format('Y-m-d H:i:s'),
             'priority' => $this->faker->randomElement(['low', 'medium', 'high', 'urgent']),
             'bucket' => $this->faker->word(),
-            'task_id' => 'TASK-' . $this->faker->unique()->numberBetween(10000, 99999),
+            'task_id' => 'TASK-'.$this->faker->unique()->numberBetween(10000, 99999),
             'created_at' => $this->faker->dateTimeBetween('-1 year', 'now')->format('Y-m-d H:i:s'),
             'updated_at' => now()->format('Y-m-d H:i:s'),
         ];

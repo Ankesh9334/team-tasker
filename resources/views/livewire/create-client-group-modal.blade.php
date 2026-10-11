@@ -13,18 +13,27 @@ new class extends Component {
     public $searchStaff = '';
     public $selectAllStaff = false;
 
+    public function searchClientsAPI($query)
+    {
+        return \App\Models\Client::where('name', 'like', "%{$query}%")
+            ->orWhere('email', 'like', "%{$query}%")
+            ->limit(20)
+            ->get()
+            ->map(function ($client) {
+                return [
+                    'value' => (string) $client->id,
+                    'text' => $client->name . ' (' . $client->email . ')'
+                ];
+            })
+            ->toArray();
+    }
+
     public function with()
     {
+        $myId = Auth::id() ?? 0;
         return [
-            'clients' => User::where('role_id', 3)
-                ->when($this->searchClient, function ($query) {
-                    $query->where('name', 'like', '%' . $this->searchClient . '%')
-                          ->orWhere('email', 'like', '%' . $this->searchClient . '%');
-                })
-                ->limit(50)
-                ->get(),
             'staff' => User::where('role_id', '!=', 3)
-                ->where('id', '!=', Auth::id())
+                ->where('id', '!=', $myId)
                 ->when($this->searchStaff, function ($query) {
                     $query->where('name', 'like', '%' . $this->searchStaff . '%');
                 })
@@ -46,7 +55,7 @@ new class extends Component {
     {
         $this->validate([
             'name' => 'required|min:3',
-            'selectedClient' => 'required|exists:users,id',
+            'selectedClient' => 'required|exists:clients,id',
             'selectedStaff' => 'array',
         ]);
 
@@ -55,10 +64,12 @@ new class extends Component {
             'name' => $this->name,
         ]);
 
-        // Auth user + Selected Client + Selected Staff
-        $participantIds = array_unique(array_merge([Auth::id()], [$this->selectedClient], $this->selectedStaff));
-
+        // Auth user + Selected Staff
+        $participantIds = array_unique(array_merge([Auth::id()], $this->selectedStaff));
         $conversation->participants()->attach($participantIds);
+
+        // Selected Client
+        $conversation->clientParticipants()->attach([$this->selectedClient]);
 
         $this->dispatch('groupCreated', conversationId: $conversation->id);
         $this->dispatch('close-modal', id: 'createClientGroupModal');
@@ -75,15 +86,33 @@ new class extends Component {
                     required>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3" wire:ignore>
                 <label class="form-label text-main">Select Client <span class="text-danger">*</span></label>
-                <input type="text" wire:model.live.debounce.300ms="searchClient" class="form-control form-control-sm mb-2" placeholder="Search client name or email...">
-                <x-select wire:model="selectedClient" required>
-                    <option value="">Choose a Client...</option>
-                    @foreach ($clients as $client)
-                        <option value="{{ $client->id }}">{{ $client->name }} ({{ $client->email }})</option>
-                    @endforeach
-                </x-select>
+                <select x-data="{
+                    instance: null,
+                    init() {
+                        this.instance = new TomSelect(this.$el, {
+                            valueField: 'value',
+                            labelField: 'text',
+                            searchField: 'text',
+                            create: false,
+                            plugins: ['clear_button'],
+                            dropdownParent: 'body',
+                            placeholder: 'Type to search for a client...',
+                            load: (query, callback) => {
+                                if (!query.length) return callback();
+                                $wire.searchClientsAPI(query).then(results => {
+                                    callback(results);
+                                }).catch(() => {
+                                    callback();
+                                });
+                            },
+                            onChange: (val) => {
+                                $wire.set('selectedClient', val);
+                            }
+                        });
+                    }
+                }" required></select>
             </div>
 
             <div class="mb-3">

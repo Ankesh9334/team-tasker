@@ -221,6 +221,16 @@
                     @enderror
                 </div>
 
+                <div class="mb-4">
+                    <label for="phone" class="form-label">Mobile Number (Optional)</label>
+                    <input type="text" id="phone" name="phone"
+                        class="form-control @error('phone') is-invalid @enderror" placeholder="+1234567890"
+                        value="{{ old('phone') }}">
+                    @error('phone')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
                 <div class="row">
                     <div class="col-md-6 mb-4">
                         <label for="password" class="form-label">Password</label>

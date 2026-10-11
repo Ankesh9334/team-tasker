@@ -2,8 +2,8 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -21,13 +21,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
-        Paginator::defaultView('vendor.pagination.premium');
+        Paginator::defaultView('components.pagination.premium');
+
+        \App\Models\Project::observe(\App\Observers\ProjectObserver::class);
 
         // Dynamic Mail Configuration from Database
         try {
             if (\Schema::hasTable('settings')) {
                 $settings = \App\Models\Setting::all()->pluck('value', 'key');
-                
+
                 if (isset($settings['smtp_host'])) {
                     config([
                         'mail.default' => $settings['mail_mailer'] ?? config('mail.default'),

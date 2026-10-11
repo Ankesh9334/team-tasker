@@ -9,7 +9,9 @@ class TicketReply extends Model
     protected $fillable = [
         'ticket_id',
         'user_id',
+        'client_id',
         'email_source',
+        'message_id',
         'body',
         'type',
         'attachments',
@@ -24,5 +26,10 @@ class TicketReply extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
     }
 }

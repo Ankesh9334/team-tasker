@@ -2,11 +2,84 @@
     <x-slot:title>
         Admin Dashboard | Team Tasker
     </x-slot:title>
+    
+    @php
+        $viewUserQuery = request('view_user_id') ? '?user_id=' . request('view_user_id') : '';
+        $viewTaskQuery = request('view_user_id') ? '?assigned_to=' . request('view_user_id') : '';
+        $viewTaskAppend = request('view_user_id') ? '&assigned_to=' . request('view_user_id') : '';
+    @endphp
 
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-4 mb-4">
+    <style>
+        /* Eliminate any horizontal overflow specifically on Dashboard */
+        html, body {
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+        }
+        .main-content-premium {
+            overflow-x: clip !important;
+            max-width: 100% !important;
+        }
+        .dashboard-wrapper {
+            max-width: 100% !important;
+            overflow-x: clip !important;
+        }
+        .dashboard-wrapper > .row {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+        .dashboard-view-as .ts-control {
+            min-height: 32px !important;
+            padding: 4px 8px !important;
+            font-size: 0.85rem !important;
+        }
+        .dashboard-view-as .ts-control .item {
+            font-size: 0.85rem !important;
+            padding: 1px 6px !important;
+        }
+        @media (max-width: 576px) {
+            .dashboard-view-as {
+                width: 100%;
+            }
+            .dashboard-view-as .ts-wrapper {
+                width: 100% !important;
+            }
+        }
+    </style>
+
+    <div class="dashboard-wrapper">
+
+
+    @if(Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin'))
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <h4 class="mb-0 dark:text-white" style="font-weight: 600;">
+            @if(isset($viewUser))
+                Viewing Dashboard As: <span class="text-primary">{{ $viewUser->name }}</span>
+            @else
+                Dashboard Overview
+            @endif
+        </h4>
+        
+        <div class="d-flex align-items-center gap-2 flex-wrap w-100-mobile">
+            <span class="text-low" style="font-size: 0.85rem;"><i class="fas fa-eye me-1"></i> View As:</span>
+            <form action="{{ route('dashboard') }}" method="GET" class="m-0 flex-grow-1" id="viewAsForm">
+                @php
+                    $userOptions = [];
+                    foreach($allUsers as $u) {
+                        $userOptions[$u->id] = $u->name . ' (' . ($u->role_id == 1 ? 'Admin' : 'User') . ')';
+                    }
+                @endphp
+                <div class="dashboard-view-as">
+                    <x-select name="view_user_id" placeholder="-- All (My View) --" :options="$userOptions" :selected="request('view_user_id')" onchange="document.getElementById('viewAsForm').submit()" style="min-width: 200px; width: 100%;" />
+                </div>
+            </form>
+        </div>
+    </div>
+    @endif
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-4 mb-4 mx-0">
         <!-- Project Overall Stats -->
         <div class="col">
-            <a href="{{ url('admin/projects') }}" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/projects') }}{{ $viewUserQuery }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                     <div class="stat-icon-premium icon-primary-premium mb-3" style="background: rgba(var(--primary-rgb), 0.1); color: var(--primary);">
                         <i class="fas fa-layer-group"></i>
@@ -18,7 +91,7 @@
             </a>
         </div>
         <div class="col">
-            <a href="{{ url('admin/tasks') }}" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/tasks') }}{{ $viewTaskQuery }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                     <div class="stat-icon-premium icon-primary-premium mb-3">
                         <i class="fas fa-project-diagram"></i>
@@ -32,7 +105,7 @@
             </a>
         </div>
         <div class="col">
-            <a href="{{ url('admin/tasks') }}?status_id={{ \App\Models\Status::where('slug', 'completed')->orWhere('name', 'Completed')->first()->id ?? '' }}" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/tasks') }}?status_id={{ \App\Models\Status::where('slug', 'completed')->orWhere('name', 'Completed')->first()->id ?? '' }}{{ $viewTaskAppend }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                     <div class="stat-icon-premium icon-success-premium mb-3">
                         <i class="fas fa-check-double"></i>
@@ -47,9 +120,9 @@
                 </div>
             </a>
         </div>
-        @if(Auth::user()->hasPermission('tickets.view'))
+        @if(Auth::user()->hasRole('super-admin') || Auth::user()->hasRole('admin'))
         <div class="col">
-            <a href="{{ url('admin/tickets') }}" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/tickets') }}{{ $viewUserQuery }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                     <div class="stat-icon-premium mb-3"
                         style="background: rgba(var(--accent-h), var(--accent-s), var(--accent-l), 0.1); color: var(--accent);">
@@ -62,11 +135,11 @@
             </a>
         </div>
         @endif
-        @if(Auth::user()->hasPermission('users.view'))
+        @if($isAdmin)
         <div class="col">
             <a href="{{ url('admin/users') }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
-                    <div class="stat-icon-premium icon-primary-premium mb-3">
+                    <div class="stat-icon-premium icon-primary-premium mb-3" style="background: rgba(var(--primary-rgb), 0.1); color: var(--primary);">
                         <i class="fas fa-users"></i>
                     </div>
                     <div class="heading-label" style="font-size: 0.75rem;">Team Members</div>
@@ -78,10 +151,146 @@
         @endif
     </div>
 
+    <!-- Attendance Overview Widgets (Super Admin & User) -->
+    @if(isset($attendanceStats) && $isAdmin)
+        <div class="glass-card p-4 mx-2 mb-4 border-main">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="fw-bold text-high mb-1 d-flex align-items-center gap-2">
+                        <i class="fas fa-clock text-primary"></i> Today's Attendance Overview
+                    </h5>
+                    <span class="text-low small">{{ now()->format('l, d F Y') }}</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{{ route('admin.attendance.daily') }}" class="btn-premium btn-premium-primary btn-sm">
+                        <i class="fas fa-tasks me-1"></i> Review Daily Reports
+                    </a>
+                </div>
+            </div>
+            <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 text-center">
+                <div class="col">
+                    <div class="p-3 rounded bg-subtle border border-subtle">
+                        <span class="text-low small d-block mb-1">Submitted</span>
+                        <h4 class="fw-bold text-primary mb-0">{{ $attendanceStats['submitted'] }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="p-3 rounded bg-subtle border border-subtle">
+                        <span class="text-low small d-block mb-1">Pending Approvals</span>
+                        <h4 class="fw-bold text-warning mb-0">{{ $attendanceStats['pending'] }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="p-3 rounded bg-subtle border border-subtle">
+                        <span class="text-low small d-block mb-1">Approved Today</span>
+                        <h4 class="fw-bold text-success mb-0">{{ $attendanceStats['approved'] }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="p-3 rounded bg-subtle border border-subtle">
+                        <span class="text-low small d-block mb-1">Rejected Today</span>
+                        <h4 class="fw-bold text-danger mb-0">{{ $attendanceStats['rejected'] }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="p-3 rounded bg-subtle border border-subtle">
+                        <span class="text-low small d-block mb-1">Not Submitted</span>
+                        <h4 class="fw-bold mb-0 dark:text-white">{{ $attendanceStats['not_submitted'] }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if(isset($userMonthlyStats))
+        <div class="glass-card p-4 mx-2 mb-4 border-main">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="fw-bold text-high mb-1 d-flex align-items-center gap-2">
+                        <i class="fas fa-calendar-check text-primary"></i> 
+                        {{ $isAdmin && isset($viewUser) ? $viewUser->name . "'s" : "My" }} Attendance & Hours
+                    </h5>
+                    <span class="text-low small">Today: {{ now()->format('d M Y') }} &bull; Month: {{ now()->format('F Y') }}</span>
+                </div>
+                <a href="{{ route('admin.attendance.myDaily') }}" class="btn-premium btn-premium-secondary btn-sm">
+                    <i class="fas fa-calendar-day me-1"></i> Full Attendance Details
+                </a>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-5 border-end border-subtle">
+                    <span class="text-low small d-block mb-2">Today's Status</span>
+                    <div class="d-flex align-items-center justify-content-between pe-3">
+                        <div>
+                            <div class="text-low small">Check In</div>
+                            <div class="fw-bold text-high fs-5">
+                                {{ isset($userAttendanceToday) && $userAttendanceToday->check_in ? \Carbon\Carbon::parse($userAttendanceToday->check_in)->format('h:i A') : '--:--' }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-low small">Check Out</div>
+                            <div class="fw-bold text-high fs-5">
+                                {{ isset($userAttendanceToday) && $userAttendanceToday->check_out ? \Carbon\Carbon::parse($userAttendanceToday->check_out)->format('h:i A') : '--:--' }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-low small">Working Time</div>
+                            <div class="fw-bold text-primary fs-5">
+                                {{ isset($userAttendanceToday) ? $userAttendanceToday->formatted_working_hours : '0h 0m' }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-low small">Approval</div>
+                            <div>
+                                @php
+                                    $appStat = $userAttendanceToday ? $userAttendanceToday->approval_status : 'not_submitted';
+                                    $appColor = match($appStat) {
+                                        'approved' => 'success',
+                                        'pending' => 'warning',
+                                        'rejected' => 'danger',
+                                        'draft' => 'info',
+                                        default => 'secondary'
+                                    };
+                                @endphp
+                                <span class="badge-premium bg-{{ $appColor }}-subtle text-{{ $appColor }}">
+                                    {{ ucfirst(str_replace('_', ' ', $appStat)) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-7 ps-md-3">
+                    <span class="text-low small d-block mb-2">{{ now()->format('F') }} Month Summary</span>
+                    <div class="row row-cols-5 text-center g-2">
+                        <div class="col">
+                            <span class="text-low" style="font-size: 0.75rem;">Present</span>
+                            <div class="fw-bold text-success fs-5">{{ $userMonthlyStats['present_days'] }}</div>
+                        </div>
+                        <div class="col">
+                            <span class="text-low" style="font-size: 0.75rem;">Half Day</span>
+                            <div class="fw-bold text-warning fs-5">{{ $userMonthlyStats['half_days'] }}</div>
+                        </div>
+                        <div class="col">
+                            <span class="text-low" style="font-size: 0.75rem;">Absent</span>
+                            <div class="fw-bold text-danger fs-5">{{ $userMonthlyStats['absent_days'] }}</div>
+                        </div>
+                        <div class="col">
+                            <span class="text-low" style="font-size: 0.75rem;">Pending</span>
+                            <div class="fw-bold text-warning fs-5">{{ $userMonthlyStats['pending_days'] }}</div>
+                        </div>
+                        <div class="col">
+                            <span class="text-low" style="font-size: 0.75rem;">Total Hours</span>
+                            <div class="fw-bold text-primary fs-5">{{ $userMonthlyStats['formatted_working_hours'] }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <!-- Health & Progress Row -->
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4 mx-0">
         <div class="col-md-6">
-            <a href="{{ url('admin/tasks') }}?priority=Critical" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/tasks') }}?priority=Critical{{ $viewTaskAppend }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100"
                     style="border: 1px solid rgba(var(--danger-rgb), 0.2); background: rgba(var(--danger-rgb), 0.02);">
                     <div class="d-flex justify-content-between align-items-center">
@@ -101,7 +310,7 @@
             </a>
         </div>
         <div class="col-md-6">
-            <a href="{{ url('admin/tasks') }}" class="text-decoration-none text-reset d-block h-100">
+            <a href="{{ url('admin/tasks') }}{{ $viewTaskQuery }}" class="text-decoration-none text-reset d-block h-100">
                 <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div class="heading-label" style="font-size: 0.75rem;">Project Completion Trend</div>
@@ -119,7 +328,7 @@
         </div>
     </div>
 
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4 mx-0">
         <div class="col-lg-8">
             <div class="glass-card h-100" style="border: 1px solid var(--border-main);">
                 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -183,7 +392,7 @@
                             <div class="position-relative">
                                 <div class="avatar-premium"
                                     style="width: 36px; height: 36px; font-size: 0.8rem; border: 2px solid var(--border-main);">
-                                    {{ substr($log->user->name, 0, 1) }}
+                                    {{ substr($log->user->name ?? $log->client->name ?? 'U', 0, 1) }}
                                 </div>
                                 @if (!$loop->last)
                                     <div class="position-absolute start-50 top-100 border-start"
@@ -194,15 +403,21 @@
                             <div class="flex-grow-1 overflow-hidden">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="fw-bold"
-                                        style="color: var(--text-high); font-size: 0.85rem;">{{ $log->user->name }}</span>
+                                        style="color: var(--text-high); font-size: 0.85rem;">{{ $log->user->name ?? $log->client->name ?? 'Unknown User' }}</span>
                                     <span class="text-low"
                                         style="font-size: 0.65rem;">{{ $log->created_at->diffForHumans() }}</span>
                                 </div>
                                 <div style="color: var(--text-medium); font-size: 0.75rem; margin-top: 2px;">
                                     {{ $log->type == 'message' ? 'Messaged on' : 'Updated' }}
-                                    <a href="{{ route('details', $log->task_id) }}"
-                                        class="text-decoration-none fw-medium"
-                                        style="color: var(--primary);">#{{ $log->task_id }}</a>
+                                    @if($log->task_id)
+                                        <a href="{{ route('details', $log->task_id) }}"
+                                            class="text-decoration-none fw-medium"
+                                            style="color: var(--primary);">Task #{{ $log->task_id }}</a>
+                                    @elseif($log->project_id)
+                                        <a href="{{ route('admin.projects.show', $log->project_id) }}"
+                                            class="text-decoration-none fw-medium"
+                                            style="color: var(--accent);">Project #{{ $log->project_id }}</a>
+                                    @endif
                                 </div>
                                 <div class="text-low italic mt-1 text-truncate"
                                     style="font-size: 0.75rem; opacity: 0.8;">
@@ -219,20 +434,22 @@
         </div>
     </div>
 
-    <!-- Personal Tasks Section -->
-    <div class="glass-card p-0 overflow-hidden" style="border: 1px solid var(--border-main);">
-        <div class="d-flex justify-content-between align-items-center p-4 border-bottom border-main">
-            <h5 class="fw-bold mb-0" style="color: var(--text-high);">My Recent Tasks</h5>
-            <a href="{{ route('index') }}" class="btn-premium btn-premium-secondary btn-sm px-3 py-1"
-                style="font-size: 0.75rem;">
-                View All Tasks
-            </a>
-        </div>
-        <div class="table-responsive">
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th class="ps-4 py-3 border-0">Task Details</th>
+    <!-- Personal Tasks & To-Do Section -->
+    <div class="row g-4 mb-4 mx-0">
+        <div class="col-lg-8">
+            <div class="glass-card p-0 overflow-hidden h-100" style="border: 1px solid var(--border-main);">
+                <div class="d-flex justify-content-between align-items-center p-4 border-bottom border-main">
+                    <h5 class="fw-bold mb-0" style="color: var(--text-high);">My Recent Tasks</h5>
+                    <a href="{{ route('index') }}" class="btn-premium btn-premium-secondary btn-sm px-3 py-1"
+                        style="font-size: 0.75rem;">
+                        View All Tasks
+                    </a>
+                </div>
+                <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th class="ps-4 py-3 border-0">Task Details</th>
                         <th class="py-3 border-0">Status</th>
                         <th class="py-3 border-0">Priority</th>
                         <th class="py-3 border-0">Progress</th>
@@ -304,7 +521,13 @@
                 </tbody>
             </table>
         </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            @livewire('todo-list', ['targetUserId' => isset($viewUser) ? $viewUser->id : null])
+        </div>
     </div>
+    </div><!-- End dashboard-wrapper -->
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {

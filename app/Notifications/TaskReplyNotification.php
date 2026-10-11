@@ -14,6 +14,7 @@ class TaskReplyNotification extends Notification implements ShouldQueue
     use Queueable;
 
     public $task;
+
     public $log;
 
     /**
@@ -32,7 +33,14 @@ class TaskReplyNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        $channels = ['database'];
+
+        $host = config('mail.mailers.smtp.host');
+        if (! empty($host) && $host !== 'mailpit' && $host !== '127.0.0.1' && $host !== 'localhost') {
+            $channels[] = 'mail';
+        }
+
+        return $channels;
     }
 
     /**
@@ -47,7 +55,7 @@ class TaskReplyNotification extends Notification implements ShouldQueue
             ->line('---')
             ->line(strip_tags($this->log->note))
             ->line('---')
-            ->action('View Task', route('admin.tasks.show', $this->task->id))
+            ->action('View Task', route('details', $this->task->id))
             ->line('Thank you for using our application!');
     }
 

@@ -13,8 +13,9 @@ new class extends Component {
 
     public function with()
     {
+        $myId = Auth::id() ?? 0;
         return [
-            'users' => User::where('id', '!=', Auth::id())
+            'users' => User::where('id', '!=', $myId)
                 ->when($this->searchUser, function ($query) {
                     $query->where('name', 'like', '%' . $this->searchUser . '%');
                 })

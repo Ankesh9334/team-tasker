@@ -91,9 +91,16 @@ class TaskLogController extends Controller
     /**
      * Start task timer.
      */
-    public function startTime($taskId)
+    public function startTime(Request $request, $taskId)
     {
-        // Check if there is already an active timer
+        $task = Task::findOrFail($taskId);
+
+        // Prevent starting if not assigned to the user
+        if ($task->assigned_to != Auth::id()) {
+            return back()->with('error', 'This task is not assigned to you.');
+        }
+
+        // Check if there is already an active timer for THIS task
         $activeTimer = TimeLog::where('task_id', $taskId)
             ->where('user_id', Auth::id())
             ->whereNull('end_time')
@@ -103,6 +110,27 @@ class TaskLogController extends Controller
             return back()->with('error', 'A timer is already running for this task.');
         }
 
+        // Check if there's any other global active timer
+        $globalActiveTimer = TimeLog::where('user_id', Auth::id())
+            ->whereNull('end_time')
+            ->first();
+
+        if ($globalActiveTimer) {
+            if ($request->has('force')) {
+                // Stop the old global active timer
+                $endTime = now();
+                $startTime = $globalActiveTimer->start_time;
+                $duration = abs($endTime->diffInSeconds($startTime));
+
+                $globalActiveTimer->update([
+                    'end_time' => $endTime,
+                    'duration' => $duration,
+                ]);
+            } else {
+                return back()->with('error', 'You already have an active timer on another task. Please stop it first.');
+            }
+        }
+
         TimeLog::create([
             'task_id' => $taskId,
             'user_id' => Auth::id(),
@@ -110,7 +138,6 @@ class TaskLogController extends Controller
         ]);
 
         // Automatically set status to in_progress if it was pending
-        $task = Task::findOrFail($taskId);
         if ($task->status == 'pending') {
             $task->update(['status' => 'in_progress']);
         }
@@ -156,7 +183,7 @@ class TaskLogController extends Controller
         $status = \App\Models\Status::find($request->status_id);
 
         $oldProgress = $task->progress;
-        
+
         $completed_at = $task->completed_at;
         if ($status && $status->is_completed && ! $completed_at) {
             $completed_at = now();

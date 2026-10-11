@@ -85,8 +85,8 @@
                             <div class="d-flex gap-4 mb-4 timeline-item">
                                 <div class="position-relative">
                                     <div class="avatar-premium"
-                                        style="width: 36px; height: 36px; font-size: 0.85rem; border: 2px solid {{ $log->user_id == Auth::id() ? 'var(--primary)' : 'var(--accent)' }};">
-                                        {{ substr($log->user->name, 0, 1) }}
+                                        style="width: 36px; height: 36px; font-size: 0.85rem; border: 2px solid {{ $log->client_id == Auth::guard('client')->id() ? 'var(--primary)' : 'var(--accent)' }};">
+                                        {{ substr($log->user?->name ?? $log->client?->name ?? 'System', 0, 1) }}
                                     </div>
                                     @if (!$loop->last)
                                         <div class="timeline-line"></div>
@@ -96,16 +96,26 @@
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <div class="d-flex align-items-center gap-2">
                                             <span class="fw-bold"
-                                                style="color: var(--text-high);">{{ $log->user->name }}</span>
-                                            @if ($log->user->role_id != 3)
+                                                style="color: var(--text-high);">{{ $log->user?->name ?? $log->client?->name ?? 'System' }}</span>
+                                            @if ($log->user_id)
                                                 <span class="badge-premium"
                                                     style="font-size: 0.65rem; background: rgba(var(--primary-rgb), 0.08); color: var(--primary);">
                                                     <i class="fas fa-headset me-1"></i> Support Agent
                                                 </span>
-                                            @else
+                                            @elseif ($log->client_id == Auth::guard('client')->id())
                                                 <span class="badge-premium"
                                                     style="font-size: 0.65rem; background: rgba(var(--primary-rgb), 0.1); color: var(--primary);">
                                                     <i class="fas fa-user me-1"></i> You
+                                                </span>
+                                            @elseif ($log->client_id)
+                                                <span class="badge-premium"
+                                                    style="font-size: 0.65rem; background: rgba(var(--primary-rgb), 0.1); color: var(--primary);">
+                                                    <i class="fas fa-user me-1"></i> Client
+                                                </span>
+                                            @else
+                                                <span class="badge-premium"
+                                                    style="font-size: 0.65rem; background: rgba(var(--text-medium-rgb), 0.1); color: var(--text-medium);">
+                                                    <i class="fas fa-robot me-1"></i> System
                                                 </span>
                                             @endif
                                         </div>
@@ -162,7 +172,7 @@
                                             </div>
                                             <div class="extra-small text-low">
                                                 {{ round($attachment->file_size / 1024, 1) }} KB •
-                                                {{ $attachment->user->name }}
+                                                {{ $attachment->user?->name ?? $attachment->client?->name ?? 'System' }}
                                             </div>
                                         </div>
                                         <a href="{{ asset('storage/' . $attachment->file_path) }}" target="_blank"

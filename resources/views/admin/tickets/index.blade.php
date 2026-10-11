@@ -26,29 +26,7 @@
             </div>
             <div class="data-grid-results">{{ $tickets->total() }} Results</div>
             <div class="data-grid-actions">
-                <button class="data-grid-filter-btn position-relative" type="button" onclick="document.getElementById('filterSlideover').classList.add('show')">
-                    <i class="fas fa-filter"></i> Filter
-                    @if (request('search') || request('priority') || request('status') || request('created_at') || request('updated_at'))
-                        <span class="position-absolute top-0 start-100 translate-middle p-1 bg-primary border border-light rounded-circle" style="width: 10px; height: 10px;">
-                            <span class="visually-hidden">Filters active</span>
-                        </span>
-                    @endif
-                </button>
-                <div class="data-grid-per-page">
-                    <select onchange="window.location.href='?per_page='+this.value">
-                        <option value="10" {{ request('per_page') == 10 ? 'selected' : '' }}>10</option>
-                        <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
-                        <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
-                    </select>
-                    <span>Per Page</span>
-                </div>
-                <div class="data-grid-pagination">
-                    <span class="data-grid-pagination-info">{{ $tickets->firstItem() ?? 0 }} - {{ $tickets->lastItem() ?? 0 }} of {{ $tickets->total() }}</span>
-                    <div class="data-grid-pagination-controls">
-                        <a href="{{ $tickets->previousPageUrl() ?? '#' }}" class="data-grid-pagination-btn" {!! $tickets->onFirstPage() ? 'style="opacity:0.5;pointer-events:none;"' : '' !!}><i class="fas fa-chevron-left" style="font-size: 0.75rem;"></i></a>
-                        <a href="{{ $tickets->nextPageUrl() ?? '#' }}" class="data-grid-pagination-btn" {!! !$tickets->hasMorePages() ? 'style="opacity:0.5;pointer-events:none;"' : '' !!}><i class="fas fa-chevron-right" style="font-size: 0.75rem;"></i></a>
-                    </div>
-                </div>
+                {{ $tickets->links() }}
             </div>
         </div>
         <div class="data-grid-bulk-actions" id="bulkActionBar">
@@ -91,8 +69,8 @@
                                 <div class="text-low" style="font-size: 0.75rem;">{{ Str::limit(strip_tags($ticket->body), 35) }}</div>
                             </td>
                             <td>
-                                @if ($ticket->user)
-                                    <span class="text-high">{{ $ticket->user->name }}</span>
+                                @if ($ticket->user || $ticket->client)
+                                    <span class="text-high">{{ $ticket->user ? $ticket->user->name : ($ticket->client ? $ticket->client->name : 'Unknown') }}</span>
                                 @else
                                     <span class="text-low italic">{{ Str::limit($ticket->email_source, 15) }}</span>
                                 @endif
@@ -149,26 +127,47 @@
                     <label class="heading-label d-block mb-2 text-low">SEARCH QUERY</label>
                     <input type="text" name="search" value="{{ request('search') }}" class="form-premium-control bg-white text-dark border-main" placeholder="Search anything...">
                 </div>
+                @if(isset($allUsers) && $allUsers->isNotEmpty())
+                    <div class="mb-4">
+                        <label class="heading-label d-block mb-2 text-low">ASSIGNED TO / EMPLOYEE</label>
+                        @php
+                            $selectedAssigneeIds = is_array(request('assigned_to')) 
+                                ? array_values(array_filter(array_map('strval', request('assigned_to')))) 
+                                : (request('assigned_to') ? [(string) request('assigned_to')] : []);
+                        @endphp
+                        <x-multiselect 
+                            id="filter_assigned_to" 
+                            name="assigned_to[]" 
+                            placeholder="Select assignees..." 
+                            :selected="$selectedAssigneeIds"
+                            class="w-100"
+                        >
+                            @foreach($allUsers as $u)
+                                <option value="{{ $u->id }}">{{ $u->name }} ({{ $u->email }})</option>
+                            @endforeach
+                        </x-multiselect>
+                    </div>
+                @endif
                 <div class="mb-4">
                     <label class="heading-label d-block mb-2 text-low">PRIORITY</label>
-                    <select name="priority" class="form-select bg-white text-dark border-main">
-                        <option value="">All Priorities</option>
-                        <option value="low" {{ request('priority') == 'low' ? 'selected' : '' }}>Low</option>
-                        <option value="medium" {{ request('priority') == 'medium' ? 'selected' : '' }}>Medium</option>
-                        <option value="high" {{ request('priority') == 'high' ? 'selected' : '' }}>High</option>
-                        <option value="urgent" {{ request('priority') == 'urgent' ? 'selected' : '' }}>Urgent</option>
-                    </select>
+                    <x-select name="priority" placeholder="All Priorities" :selected="request('priority')">
+                        <option value="" class="bg-dark">All Priorities</option>
+                        <option value="low" class="bg-dark">Low</option>
+                        <option value="medium" class="bg-dark">Medium</option>
+                        <option value="high" class="bg-dark">High</option>
+                        <option value="urgent" class="bg-dark">Urgent</option>
+                    </x-select>
                 </div>
                 <div class="mb-4">
                     <label class="heading-label d-block mb-2 text-low">STATUS</label>
-                    <select name="status" class="form-select bg-white text-dark border-main">
-                        <option value="">All Statuses</option>
-                        <option value="open" {{ request('status') == 'open' ? 'selected' : '' }}>Open</option>
-                        <option value="in_progress" {{ request('status') == 'in_progress' ? 'selected' : '' }}>In Progress</option>
-                        <option value="waiting_for_client" {{ request('status') == 'waiting_for_client' ? 'selected' : '' }}>Waiting for Client</option>
-                        <option value="resolved" {{ request('status') == 'resolved' ? 'selected' : '' }}>Resolved</option>
-                        <option value="closed" {{ request('status') == 'closed' ? 'selected' : '' }}>Closed</option>
-                    </select>
+                    <x-select name="status" placeholder="All Statuses" :selected="request('status')">
+                        <option value="" class="bg-dark">All Statuses</option>
+                        <option value="open" class="bg-dark">Open</option>
+                        <option value="in_progress" class="bg-dark">In Progress</option>
+                        <option value="waiting_for_client" class="bg-dark">Waiting for Client</option>
+                        <option value="resolved" class="bg-dark">Resolved</option>
+                        <option value="closed" class="bg-dark">Closed</option>
+                    </x-select>
                 </div>
                 <div class="mb-4">
                     <label class="heading-label d-block mb-2 text-low">CREATED DATE</label>

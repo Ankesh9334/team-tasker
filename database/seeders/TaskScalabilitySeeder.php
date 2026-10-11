@@ -7,7 +7,6 @@ use App\Models\TaskLog;
 use App\Models\TimeLog;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 
 class TaskScalabilitySeeder extends Seeder
 {
@@ -36,7 +35,7 @@ class TaskScalabilitySeeder extends Seeder
                 $activities[] = [
                     'task_id' => $task->id,
                     'user_id' => $users[array_rand($users)],
-                    'note' => 'Scalability test activity log entry #' . $i,
+                    'note' => 'Scalability test activity log entry #'.$i,
                     'type' => rand(0, 1) ? 'log' : 'message',
                     'created_at' => now()->subMinutes(rand(1, 10000)),
                     'updated_at' => now(),
@@ -63,7 +62,7 @@ class TaskScalabilitySeeder extends Seeder
                     'start_time' => $start,
                     'end_time' => $end,
                     'duration' => $duration,
-                    'description' => 'Scalability test time log entry #' . $i,
+                    'description' => 'Scalability test time log entry #'.$i,
                     'mode' => rand(0, 1) ? 'Inside Office' : 'Remote',
                     'bucket' => 'Development',
                     'created_at' => now(),

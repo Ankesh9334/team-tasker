@@ -11,8 +11,8 @@ class SearchController extends Controller
         $query = $request->input('q');
         $tasks = collect();
         $users = collect();
-        $user = \Auth::user();
-        $isClient = $user->hasRole('client');
+        $isClient = \Auth::guard('client')->check();
+        $user = $isClient ? \Auth::guard('client')->user() : \Auth::user();
 
         if ($query) {
             // Search Tasks
@@ -23,13 +23,13 @@ class SearchController extends Controller
 
             if ($isClient) {
                 // Clients only see tasks linked to their tickets
-                $ticketIds = \App\Models\Ticket::where('user_id', $user->id)->pluck('id');
+                $ticketIds = \App\Models\Ticket::where($isClient ? 'client_id' : 'user_id', $user->id)->pluck('id');
                 $taskQuery->whereIn('ticket_id', $ticketIds);
             } else {
                 // Admins/Staff
                 $taskQuery->where(function ($q) {
-                    $q->where('user_id', \Auth::id())
-                        ->orWhere('assigned_to', \Auth::id());
+                    $q->where('user_id', ($isClient ? \Auth::guard('client')->id() : \Auth::id()))
+                        ->orWhere('assigned_to', ($isClient ? \Auth::guard('client')->id() : \Auth::id()));
                 });
             }
 
@@ -43,7 +43,7 @@ class SearchController extends Controller
             });
 
             if ($isClient) {
-                $ticketQuery->where('user_id', $user->id);
+                $ticketQuery->where($isClient ? 'client_id' : 'user_id', $user->id);
             }
 
             $tickets = $ticketQuery->with(['user'])->latest()->take(20)->get();

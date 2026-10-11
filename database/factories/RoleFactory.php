@@ -11,7 +11,8 @@ class RoleFactory extends Factory
 {
     public function definition(): array
     {
-        $name = $this->faker->jobTitle() . ' ' . $this->faker->unique()->numberBetween(1, 1000);
+        $name = $this->faker->jobTitle().' '.$this->faker->unique()->numberBetween(1, 1000);
+
         return [
             'name' => $name,
             'slug' => str()->slug($name),

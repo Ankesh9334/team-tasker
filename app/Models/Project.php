@@ -14,7 +14,7 @@ class Project extends Model
         'status',
         'start_date',
         'deadline',
-        'user_id'
+        'user_id',
     ];
 
     protected $casts = [
@@ -25,6 +25,11 @@ class Project extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class);
     }
 
     public function tasks()

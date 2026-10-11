@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\ChatMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -19,9 +18,12 @@ class ChatMessageNotification extends Notification implements ShouldQueue
     public function __construct($message)
     {
         $this->message = $message;
-        // Ensure user relationship is loaded for the sender's name
-        if (!$this->message->relationLoaded('user')) {
+        // Ensure user and client relationships are loaded for the sender's name
+        if (! $this->message->relationLoaded('user')) {
             $this->message->load('user');
+        }
+        if (! $this->message->relationLoaded('client')) {
+            $this->message->load('client');
         }
     }
 
@@ -36,25 +38,33 @@ class ChatMessageNotification extends Notification implements ShouldQueue
         $this->message->refresh();
 
         // 2. Check if the user has already read the message via real-time socket
-        $participant = \Illuminate\Support\Facades\DB::table('conversation_participants')
-            ->where('conversation_id', $this->message->conversation_id)
-            ->where('user_id', $notifiable->id)
-            ->first();
+        $isClient = $notifiable instanceof \App\Models\Client;
+        $query = \Illuminate\Support\Facades\DB::table('conversation_participants')
+            ->where('conversation_id', $this->message->conversation_id);
+
+        if ($isClient) {
+            $query->where('client_id', $notifiable->id);
+        } else {
+            $query->where('user_id', $notifiable->id);
+        }
+        $participant = $query->first();
 
         if ($participant && $participant->last_read_at) {
             $lastRead = \Carbon\Carbon::parse($participant->last_read_at);
             $msgCreated = $this->message->created_at;
-            
-            \Illuminate\Support\Facades\Log::info('ChatMessageNotification: User ' . $notifiable->id . ' last_read_at: ' . $lastRead . ', Message created_at: ' . $msgCreated);
+
+            \Illuminate\Support\Facades\Log::info('ChatMessageNotification: Notifiable '.$notifiable->id.' last_read_at: '.$lastRead.', Message created_at: '.$msgCreated);
 
             if ($lastRead->addSeconds(5)->gte($msgCreated)) {
                 \Illuminate\Support\Facades\Log::info('ChatMessageNotification: Suppressing notification because user recently viewed the chat (within 5s buffer).');
+
                 return [];
             }
         }
 
-        \Illuminate\Support\Facades\Log::info('ChatMessageNotification: Dispatching through FirebaseChannel.');
-        return [Channels\FirebaseChannel::class];
+        \Illuminate\Support\Facades\Log::info('ChatMessageNotification: Dispatching through database and FirebaseChannel.');
+
+        return ['database', Channels\FirebaseChannel::class];
     }
 
     /**
@@ -62,14 +72,15 @@ class ChatMessageNotification extends Notification implements ShouldQueue
      */
     public function toFirebase(object $notifiable): array
     {
+        $senderName = $this->message->user->name ?? $this->message->client->name ?? 'User';
         $body = strip_tags($this->message->body);
-        
+
         if (empty($body) && $this->message->attachments()->count() > 0) {
             $body = 'sent an attachment';
         }
 
         return [
-            'title' => 'New Message from ' . ($this->message->user->name ?? 'User'),
+            'title' => 'New Message from '.$senderName,
             'body' => $body,
             'data' => [
                 'conversation_id' => (string) $this->message->conversation_id,
@@ -85,9 +96,19 @@ class ChatMessageNotification extends Notification implements ShouldQueue
      */
     public function toArray(object $notifiable): array
     {
+        $senderName = $this->message->user->name ?? $this->message->client->name ?? 'User';
+        $body = strip_tags($this->message->body);
+        if (empty($body) && $this->message->attachments()->count() > 0) {
+            $body = 'Sent an attachment';
+        }
+
         return [
             'conversation_id' => $this->message->conversation_id,
-            'message' => 'New message from ' . ($this->message->user->name ?? 'User'),
+            'message' => 'New message from '.$senderName,
+            'title' => $senderName,
+            'description' => \Illuminate\Support\Str::limit($body, 60),
+            'sender_id' => $this->message->user_id ?? $this->message->client_id,
+            'sender_name' => $senderName,
         ];
     }
 }

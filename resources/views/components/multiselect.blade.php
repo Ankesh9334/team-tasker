@@ -15,6 +15,16 @@
             plugins: ['remove_button'],
             create: false,
             dropdownParent: 'body',
+            maxOptions: 20,
+            onInitialize: function() {
+                const self = this;
+                self.dropdown_content.addEventListener('scroll', function() {
+                    if (this.scrollTop + this.clientHeight >= this.scrollHeight - 10) {
+                        self.settings.maxOptions += 20;
+                        self.refreshOptions(false);
+                    }
+                });
+            },
             onItemAdd: () => {
                 this.instance.setTextboxValue('');
                 this.instance.refreshOptions();
@@ -28,11 +38,11 @@
         if (this.value !== null) {
             this.$watch('value', (val) => {
                 if (JSON.stringify(this.instance.getValue()) !== JSON.stringify(val)) {
-                    this.instance.setValue(val);
+                    this.instance.setValue(val, true);
                 }
             });
         } else if (this.selected && this.selected.length > 0) {
-            this.instance.setValue(this.selected);
+            this.instance.setValue(this.selected, true);
         }
     }
 }">

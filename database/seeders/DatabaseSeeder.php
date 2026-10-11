@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             SuperAdminSeeder::class,
             StatusSeeder::class,
+            // ProjectSeeder::class,
             // ScalabilitySeeder::class,
             // TaskScalabilitySeeder::class
         ]);

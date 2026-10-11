@@ -43,13 +43,12 @@
 
             <div class="row g-4 mb-5">
                 <div class="col-md-4">
-                    <label class="heading-label d-block mb-2 text-high">Project Manager</label>
-                    <x-select name="user_id" placeholder="Select Manager" :selected="$project->user_id">
-                        <option value="" class="bg-dark">Unassigned</option>
+                    <label class="heading-label d-block mb-2 text-high">Project Managers</label>
+                    <x-multiselect name="user_ids[]" placeholder="Select Managers" :selected="$project->users->pluck('id')->toArray()">
                         @foreach($users as $user)
                             <option value="{{ $user->id }}" class="bg-dark">{{ $user->name }}</option>
                         @endforeach
-                    </x-select>
+                    </x-multiselect>
                 </div>
                 <div class="col-md-4">
                     <label class="heading-label d-block mb-2 text-high">Start Date</label>

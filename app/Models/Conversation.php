@@ -11,7 +11,16 @@ class Conversation extends Model
     public function participants()
     {
         return $this->belongsToMany(User::class, 'conversation_participants')
-            ->withPivot('last_read_at')
+            ->withPivot('last_read_at', 'user_id', 'client_id')
+            ->wherePivotNotNull('user_id')
+            ->withTimestamps();
+    }
+
+    public function clientParticipants()
+    {
+        return $this->belongsToMany(Client::class, 'conversation_participants', 'conversation_id', 'client_id')
+            ->withPivot('last_read_at', 'user_id', 'client_id')
+            ->wherePivotNotNull('client_id')
             ->withTimestamps();
     }
 
