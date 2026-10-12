@@ -16,8 +16,9 @@ class ProjectController extends Controller
     public function create()
     {
         $users = User::all();
+        $clients = \App\Models\Client::all();
 
-        return view('admin.projects.create', compact('users'));
+        return view('admin.projects.create', compact('users', 'clients'));
     }
 
     public function store(Request $request)
@@ -30,6 +31,7 @@ class ProjectController extends Controller
             'deadline' => 'nullable|date',
             'user_ids' => 'nullable|array',
             'user_ids.*' => 'exists:users,id',
+            'client_id' => 'nullable|exists:clients,id',
         ]);
 
         $project = Project::create($request->except('user_ids'));
@@ -72,8 +74,9 @@ class ProjectController extends Controller
     {
         $project = Project::findOrFail($id);
         $users = User::all();
+        $clients = \App\Models\Client::all();
 
-        return view('admin.projects.edit', compact('project', 'users'));
+        return view('admin.projects.edit', compact('project', 'users', 'clients'));
     }
 
     public function update(Request $request, $id)
@@ -88,6 +91,7 @@ class ProjectController extends Controller
             'deadline' => 'nullable|date',
             'user_ids' => 'nullable|array',
             'user_ids.*' => 'exists:users,id',
+            'client_id' => 'nullable|exists:clients,id',
         ]);
 
         $project->update($request->except('user_ids'));

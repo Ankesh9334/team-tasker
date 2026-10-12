@@ -25,7 +25,7 @@ class Client extends Authenticatable
         'name', 'email', 'password', 'phone', 'company', 'company_name',
         'website', 'client_type', 'profile_image', 'fcm_token',
         'is_approved', 'status', 'email_opt_out',
-        'otp', 'otp_expires_at', 'email_verified_at',
+        'otp', 'otp_expires_at', 'email_verified_at', 'last_seen_at',
     ];
 
     protected $hidden = [
@@ -35,10 +35,16 @@ class Client extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'otp_expires_at' => 'datetime',
+        'last_seen_at' => 'datetime',
         'is_approved' => 'boolean',
         'email_opt_out' => 'boolean',
         'password' => 'hashed',
     ];
+
+    public function getWhatsappStatusAttribute(): string
+    {
+        return \App\Helpers\ChatPresenceHelper::formatLastSeen($this->last_seen_at);
+    }
 
     public function getCompanyAttribute($value)
     {
