@@ -749,6 +749,10 @@
                         class="nav-link-premium {{ request()->routeIs('client.tasks.*') ? 'active' : '' }}">
                         <i class="fas fa-tasks"></i> Tasks
                     </a>
+                    <a href="{{ route('client.projects.index') }}"
+                        class="nav-link-premium {{ request()->routeIs('client.projects.*') ? 'active' : '' }}">
+                        <i class="fas fa-project-diagram"></i> Projects
+                    </a>
                     <a href="{{ route('client.chat.index') }}"
                         class="nav-link-premium d-flex align-items-center {{ request()->routeIs('client.chat.index') ? 'active' : '' }}">
                         <i class="fas fa-comments"></i> Chats

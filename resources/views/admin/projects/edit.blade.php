@@ -42,7 +42,16 @@
             </div>
 
             <div class="row g-4 mb-5">
-                <div class="col-md-4">
+                <div class="col-md-3">
+                    <label class="heading-label d-block mb-2 text-high">Assigned Client</label>
+                    <x-select name="client_id" placeholder="Select Client (Optional)">
+                        <option value="" class="bg-dark">Internal / None</option>
+                        @foreach($clients as $client)
+                            <option value="{{ $client->id }}" class="bg-dark" {{ $project->client_id == $client->id ? 'selected' : '' }}>{{ $client->name }}</option>
+                        @endforeach
+                    </x-select>
+                </div>
+                <div class="col-md-3">
                     <label class="heading-label d-block mb-2 text-high">Project Managers</label>
                     <x-multiselect name="user_ids[]" placeholder="Select Managers" :selected="$project->users->pluck('id')->toArray()">
                         @foreach($users as $user)
