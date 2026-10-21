@@ -28,6 +28,10 @@ use App\Models\User;
 use App\Models\Admin;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\PayrollController;
+use App\Http\Controllers\Admin\HolidayController;
+
+
 
 // Auth Controller
 Route::controller(AuthController::class)->group(function () {
@@ -300,11 +304,15 @@ Route::middleware(['web', 'auth:web,admin'])->controller(AttendanceController::c
     Route::get('/daily', 'daily')->name('admin.attendance.daily');
     Route::get('/report-details', 'reportDetails')->name('admin.attendance.reportDetails');
     Route::post('/daily/update', 'updateDailyAttendance')->name('admin.attendance.daily.update');
+    Route::patch('/{attendance}/approval-status', 'updateApprovalStatus')
+    ->name('admin.attendance.updateApprovalStatus');
     Route::post('/{id}/approve', 'approve')->name('admin.attendance.approve');
     Route::post('/{id}/reject', 'reject')->name('admin.attendance.reject');
     Route::post('/bulk-approve', 'bulkApprove')->name('admin.attendance.bulkApprove');
     Route::post('/bulk-action', 'bulkAction')->name('admin.attendance.bulkAction');
     Route::get('/monthly', 'monthly')->name('admin.attendance.monthly');
+    
+    Route::post('/approval-status', 'changeApprovalStatus')->name('admin.attendance.changeApprovalStatus');
 
     Route::get('/requests', 'requests')->name('admin.attendance.requests')->middleware('permission:attendance.requests_manage|attendance.view|hr.leave_requests|hr.manage');
     Route::post('/requests', 'storeRequest')->name('admin.attendance.requests.store');
@@ -316,6 +324,35 @@ Route::middleware(['web', 'auth:web,admin'])->controller(AttendanceController::c
     Route::get('/settings', 'settings')->name('admin.attendance.settings')->middleware('permission:attendance.settings|attendance.manage|hr.attendance_settings|hr.manage');
     Route::put('/settings', 'updateSettings')->name('admin.attendance.settings.update')->middleware('permission:attendance.settings|attendance.manage|hr.attendance_settings|hr.manage');
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| Payroll Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['web', 'auth:web,admin'])->prefix('admin/payroll')->name('admin.payroll.')->controller(PayrollController::class)->group(function () {
+    Route::get('/', 'index')->name('index');
+
+    Route::get('/salaries', 'salaries')->name('salaries');
+    Route::post('/salaries', 'storeSalary')->name('salaries.store');
+    Route::post('/generate', 'generate')->name('generate');
+    Route::get('/{id}', 'show')->whereNumber('id')->name('show');
+    Route::post('/{id}/submit', 'submit')->whereNumber('id')->name('submit');
+    Route::post('/{id}/approve', 'approve')->whereNumber('id')->name('approve');
+    Route::post('/{id}/reject', 'reject')->whereNumber('id')->name('reject');
+    Route::post('/{id}/mark-paid', 'markPaid')->whereNumber('id')->name('markPaid');
+    Route::get('/{id}/payslip', 'payslip')->whereNumber('id')->name('payslip');
+});
+
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('holidays', [HolidayController::class, 'index'])->name('holidays.index');
+    Route::post('holidays', [HolidayController::class, 'store'])->name('holidays.store');
+    Route::delete('holidays/{holiday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
+});
+
+
 
 // Consolidated Settings
 Route::middleware(['web', 'auth:web,admin'])->controller(SettingsController::class)->prefix('admin/settings')->group(function () {
@@ -365,8 +402,8 @@ Route::post('/webhooks/email/inbound', [InboundEmailWebhookController::class, 'h
 // Dynamic Service Worker Route
 Route::get('/firebase-messaging-sw.js', function () {
     return response()->view('firebase-messaging-sw')
-        ->header('Content-Type', 'application/javascript')
-        ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    ->header('Content-Type', 'application/javascript')
+    ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
 })->name('firebase.sw');
 
 // Dynamic PWA Manifest Route
@@ -376,8 +413,8 @@ Route::get('/manifest.json', function () {
     $appLogo = $settings['app_logo'] ?? null;
 
     $iconUrl = ($appLogo && Storage::disk('public')->exists($appLogo))
-        ? asset('storage/'.$appLogo)
-        : asset('icons/icon-192x192.png');
+    ? asset('storage/'.$appLogo)
+    : asset('icons/icon-192x192.png');
 
     $manifest = [
         'name' => $appName.' - Modern Collaboration Hub',
