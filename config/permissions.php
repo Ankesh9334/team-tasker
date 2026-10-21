@@ -90,6 +90,15 @@ return [
         'reports' => 'View Attendance Reports',
         'settings' => 'Manage Attendance Settings',
     ],
+    'payroll' => [
+        'view' => 'View Payroll',
+        'salary_view' => 'View Employee Salary',
+        'salary_manage' => 'Manage Employee Salary',
+        'generate' => 'Generate Payroll',
+        'payslip_view' => 'View Payslips',
+        'approve' => 'Approve Final Salary',
+    ],
+    
     'meetings' => [
         'view' => 'View Meetings',
         'create' => 'Create/Schedule Meeting',

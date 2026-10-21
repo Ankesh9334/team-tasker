@@ -48,52 +48,66 @@ class Attendance extends Model
 
     protected static function booted()
     {
-        static::saving(function ($attendance) {
-            // Bi-directional synchronization for column safety
-            if ($attendance->attendance_date && ! $attendance->date) {
-                $attendance->date = $attendance->attendance_date;
-            } elseif ($attendance->date && ! $attendance->attendance_date) {
-                $attendance->attendance_date = $attendance->date;
+        static::saving(function (self $a) {
+            // Naye (main) aur purane (legacy) columns ko sync rakho.
+            // Jo column abhi badla hai (dirty), wahi "source of truth" hai —
+            // isse edit/correction ke baad purani value wapas nahi aati.
+            self::syncPair($a, 'attendance_date', 'date');
+            self::syncPair($a, 'check_in', 'clock_in');
+            self::syncPair($a, 'check_out', 'clock_out');
+            self::syncPair($a, 'remarks', 'notes');
+
+            // working_minutes <-> work_hours
+            if ($a->isDirty('working_minutes') && $a->working_minutes !== null) {
+                $a->work_hours = round($a->working_minutes / 60, 2);
+            } elseif ($a->isDirty('work_hours') && $a->work_hours !== null) {
+                $a->working_minutes = (int) round(((float) $a->work_hours) * 60);
+            } elseif ($a->work_hours === null && $a->working_minutes !== null) {
+                $a->work_hours = round($a->working_minutes / 60, 2);
+            } elseif (! $a->working_minutes && $a->work_hours !== null) {
+                $a->working_minutes = (int) round(((float) $a->work_hours) * 60);
             }
 
-            if ($attendance->check_in && ! $attendance->clock_in) {
-                $attendance->clock_in = $attendance->check_in;
-            } elseif ($attendance->clock_in && ! $attendance->check_in) {
-                $attendance->check_in = $attendance->clock_in;
-            }
-
-            if ($attendance->check_out && ! $attendance->clock_out) {
-                $attendance->clock_out = $attendance->check_out;
-            } elseif ($attendance->clock_out && ! $attendance->check_out) {
-                $attendance->check_out = $attendance->clock_out;
-            }
-
-            if ($attendance->remarks && ! $attendance->notes) {
-                $attendance->notes = $attendance->remarks;
-            } elseif ($attendance->notes && ! $attendance->remarks) {
-                $attendance->remarks = $attendance->notes;
-            }
-
-            if ($attendance->working_minutes !== null && $attendance->work_hours === null) {
-                $attendance->work_hours = round($attendance->working_minutes / 60, 2);
-            } elseif ($attendance->work_hours !== null && (! $attendance->working_minutes || $attendance->working_minutes == 0)) {
-                $attendance->working_minutes = (int) round(((float) $attendance->work_hours) * 60);
-            }
-
-            if ($attendance->attendance_status && ! $attendance->status) {
-                $attendance->status = match ($attendance->attendance_status) {
+            // attendance_status <-> status
+            if ($a->isDirty('attendance_status') && $a->attendance_status) {
+                $a->status = match ($a->attendance_status) {
                     'half_day' => 'Half-Day',
                     'absent' => 'Absent',
-                    default => 'Present'
+                    default => 'Present',
                 };
-            } elseif ($attendance->status && ! $attendance->attendance_status) {
-                $attendance->attendance_status = match ($attendance->status) {
+            } elseif ($a->isDirty('status') && $a->status) {
+                $a->attendance_status = match ($a->status) {
                     'Absent' => 'absent',
                     'Half-Day' => 'half_day',
-                    default => 'present'
+                    default => 'present',
+                };
+            } elseif ($a->attendance_status && ! $a->status) {
+                $a->status = match ($a->attendance_status) {
+                    'half_day' => 'Half-Day',
+                    'absent' => 'Absent',
+                    default => 'Present',
+                };
+            } elseif ($a->status && ! $a->attendance_status) {
+                $a->attendance_status = match ($a->status) {
+                    'Absent' => 'absent',
+                    'Half-Day' => 'half_day',
+                    default => 'present',
                 };
             }
         });
+    }
+
+    private static function syncPair(self $a, string $main, string $legacy): void
+    {
+        if ($a->isDirty($main)) {
+            $a->{$legacy} = $a->{$main};
+        } elseif ($a->isDirty($legacy)) {
+            $a->{$main} = $a->{$legacy};
+        } elseif ($a->{$main} === null && $a->{$legacy} !== null) {
+            $a->{$main} = $a->{$legacy};
+        } elseif ($a->{$legacy} === null && $a->{$main} !== null) {
+            $a->{$legacy} = $a->{$main};
+        }
     }
 
     public function user()

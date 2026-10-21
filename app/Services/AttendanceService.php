@@ -8,6 +8,7 @@ use App\Models\AttendanceLog;
 use App\Models\User;
 use App\Notifications\AttendanceNotification;
 use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ class AttendanceService
 
     /**
      * Record a punch in for the authenticated user.
+     * Naya record hamesha `draft` se start hota hai.
      */
     public function punchIn(Authenticatable $user, ?string $remarks = null, ?string $ip = null): Attendance
     {
@@ -40,13 +42,12 @@ class AttendanceService
         $now = $this->now();
         $userId = $user->getAuthIdentifier();
 
-        // Check if attendance already exists for today
         $existing = Attendance::where('user_id', $userId)
-            ->where(function ($q) use ($today) {
-                $q->where('attendance_date', $today->format('Y-m-d'))
-                    ->orWhere('date', $today->format('Y-m-d'));
-            })
-            ->first();
+        ->where(function ($q) use ($today) {
+            $q->where('attendance_date', $today->format('Y-m-d'))
+            ->orWhere('date', $today->format('Y-m-d'));
+        })
+        ->first();
 
         if ($existing && $existing->check_in) {
             throw new \InvalidArgumentException('You have already punched in for today.');
@@ -92,7 +93,8 @@ class AttendanceService
     }
 
     /**
-     * Record a punch out for the user and calculate working minutes server-side.
+     * Record a punch out. Approval status ko chhedta nahi — draft hi rehta hai
+     * jab tak Super Admin change na kare.
      */
     public function punchOut(Authenticatable $user, ?string $remarks = null, ?string $ip = null): Attendance
     {
@@ -101,11 +103,11 @@ class AttendanceService
         $userId = $user->getAuthIdentifier();
 
         $attendance = Attendance::where('user_id', $userId)
-            ->where(function ($q) use ($today) {
-                $q->where('attendance_date', $today->format('Y-m-d'))
-                    ->orWhere('date', $today->format('Y-m-d'));
-            })
-            ->first();
+        ->where(function ($q) use ($today) {
+            $q->where('attendance_date', $today->format('Y-m-d'))
+            ->orWhere('date', $today->format('Y-m-d'));
+        })
+        ->first();
 
         if (! $attendance || ! $attendance->check_in) {
             throw new \InvalidArgumentException('You must punch in before punching out.');
@@ -122,8 +124,8 @@ class AttendanceService
             $attendance->working_minutes = $workingMinutes;
             if ($remarks) {
                 $attendance->remarks = $attendance->remarks
-                    ? $attendance->remarks."\n".$remarks
-                    : $remarks;
+                ? $attendance->remarks."\n".$remarks
+                : $remarks;
             }
             if ($ip) {
                 $attendance->ip_address = $ip;
@@ -163,8 +165,6 @@ class AttendanceService
         $in = Carbon::parse("{$dateStr} {$checkIn}", config('app.timezone'));
         $out = Carbon::parse("{$dateStr} {$checkOut}", config('app.timezone'));
 
-        // If checkout is chronologically earlier than checkin on the same date string,
-        // it signifies an overnight shift past midnight (e.g. 23:30 to 01:30)
         if ($out->lessThan($in)) {
             $out->addDay();
         }
@@ -183,7 +183,7 @@ class AttendanceService
         $isSuperAdmin = ($user instanceof Admin) || (method_exists($user, 'hasRole') && $user->hasRole('super-admin'));
 
         if ($attendance->user_id !== $userId && ! $isSuperAdmin) {
-            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized to submit another user’s report.');
+            throw new AuthorizationException('Unauthorized to submit another user’s report.');
         }
 
         if ($attendance->isApproved()) {
@@ -206,7 +206,6 @@ class AttendanceService
                 ['remarks' => $remarks, 'submitted_at' => $attendance->submitted_at]
             );
 
-            // Notify user of successful submission
             $user->notify(new AttendanceNotification($attendance, 'submitted'));
 
             return $attendance;
@@ -230,7 +229,7 @@ class AttendanceService
             $attendance->approved_at = $this->now();
             $attendance->approved_by = $adminId;
             $attendance->approved_by_type = ($admin instanceof Admin) ? 'admin' : 'user';
-            $attendance->rejection_reason = null; // Clear previous rejection reason if any
+            $attendance->rejection_reason = null;
             $attendance->save();
 
             $this->logActivity(
@@ -241,7 +240,6 @@ class AttendanceService
                 ['approved_by' => $adminId, 'approved_at' => $attendance->approved_at]
             );
 
-            // Notify user
             $attendance->user?->notify(new AttendanceNotification($attendance, 'approved'));
 
             return $attendance;
@@ -265,6 +263,7 @@ class AttendanceService
             $attendance->rejection_reason = $trimmedReason;
             $attendance->approved_at = null;
             $attendance->approved_by = null;
+            $attendance->approved_by_type = null;
             $attendance->save();
 
             $this->logActivity(
@@ -275,7 +274,6 @@ class AttendanceService
                 ['rejected_by' => $adminId, 'reason' => $trimmedReason]
             );
 
-            // Notify user
             $attendance->user?->notify(new AttendanceNotification($attendance, 'rejected', $trimmedReason));
 
             return $attendance;
@@ -291,7 +289,7 @@ class AttendanceService
         $isSuperAdmin = ($user instanceof Admin) || (method_exists($user, 'hasRole') && $user->hasRole('super-admin'));
 
         if ($attendance->user_id !== $userId && ! $isSuperAdmin) {
-            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized to resubmit another user’s report.');
+            throw new AuthorizationException('Unauthorized to resubmit another user’s report.');
         }
 
         if ($attendance->approval_status !== 'rejected' && $attendance->approval_status !== 'draft') {
@@ -331,9 +329,9 @@ class AttendanceService
 
         return DB::transaction(function () use ($attendanceIds, $admin) {
             $attendances = Attendance::with('user')
-                ->whereIn('id', $attendanceIds)
-                ->where('approval_status', 'pending')
-                ->get();
+            ->whereIn('id', $attendanceIds)
+            ->where('approval_status', 'pending')
+            ->get();
 
             $approvedCount = 0;
             foreach ($attendances as $att) {
@@ -351,37 +349,115 @@ class AttendanceService
     }
 
     /**
-     * Super Admin manual correction/adjustment of attendance record.
+     * Super Admin: koi bhi approval status set karo (draft / pending / approved / rejected).
+     * Dropdown aur manual correction dono yahi use karte hain.
+     */
+    public function setApprovalStatus(Attendance $attendance, string $newStatus, Authenticatable $actor, ?string $reason = null): Attendance
+    {
+        if (! in_array($newStatus, ['draft', 'pending', 'approved', 'rejected'], true)) {
+            throw new \InvalidArgumentException('Invalid approval status.');
+        }
+
+        $isSuperAdmin = ($actor instanceof Admin) || (method_exists($actor, 'hasRole') && $actor->hasRole('super-admin'));
+        if (! $isSuperAdmin) {
+            throw new AuthorizationException('Only Super Admin can change approval status.');
+        }
+
+        $oldStatus = $attendance->approval_status ?: 'draft';
+        if ($oldStatus === $newStatus) {
+            return $attendance;
+        }
+
+        $reason = $reason ? trim($reason) : null;
+        $actorId = $actor->getAuthIdentifier();
+        $actorType = ($actor instanceof Admin) ? 'admin' : 'user';
+
+        DB::transaction(function () use ($attendance, $newStatus, $oldStatus, $reason, $actor, $actorId, $actorType) {
+            $attendance->approval_status = $newStatus;
+
+            switch ($newStatus) {
+                case 'approved':
+                $attendance->approved_at = $this->now();
+                $attendance->approved_by = $actorId;
+                $attendance->approved_by_type = $actorType;
+                $attendance->rejection_reason = null;
+                break;
+
+                case 'pending':
+                $attendance->approved_at = null;
+                $attendance->approved_by = null;
+                $attendance->approved_by_type = null;
+                $attendance->submitted_at = $attendance->submitted_at ?: $this->now();
+                $attendance->rejection_reason = null;
+                break;
+
+                case 'draft':
+                $attendance->approved_at = null;
+                $attendance->approved_by = null;
+                $attendance->approved_by_type = null;
+                $attendance->submitted_at = null;
+                $attendance->rejection_reason = null;
+                break;
+
+                case 'rejected':
+                $attendance->approved_at = null;
+                $attendance->approved_by = null;
+                $attendance->approved_by_type = null;
+                $attendance->rejection_reason = $reason ?: 'Marked rejected by Super Admin.';
+                break;
+            }
+
+            $attendance->save();
+
+            $this->logActivity(
+                $attendance,
+                $actor,
+                'attendance.status_changed',
+                'Approval status changed from '.ucfirst($oldStatus).' to '.ucfirst($newStatus)
+                .' by '.($actor->name ?? 'Super Admin')
+                .($newStatus === 'rejected' ? ". Reason: {$attendance->rejection_reason}" : ''),
+                ['old' => $oldStatus, 'new' => $newStatus, 'reason' => $attendance->rejection_reason]
+            );
+        });
+
+        // Notification transaction ke baad — fail ho to status change na ruke
+        try {
+            if ($newStatus === 'approved') {
+                $attendance->user?->notify(new AttendanceNotification($attendance, 'approved'));
+            } elseif ($newStatus === 'rejected') {
+                $attendance->user?->notify(new AttendanceNotification($attendance, 'rejected', $attendance->rejection_reason));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $attendance;
+    }
+
+    /**
+     * Super Admin manual correction. Approval status yahan direct set nahi hota,
+     * setApprovalStatus() se hota hai (taaki approved_by / logs sahi rahein).
      */
     public function correctAttendance(Attendance $attendance, array $data, Authenticatable $admin, ?string $reason = null): Attendance
     {
-        return DB::transaction(function () use ($attendance, $data, $admin, $reason) {
+        $newApproval = $data['approval_status'] ?? null;
+        $oldApproval = $attendance->approval_status ?: 'draft';
+
+        DB::transaction(function () use ($attendance, $data, $admin, $reason) {
             $oldValues = [
                 'check_in' => $attendance->check_in,
                 'check_out' => $attendance->check_out,
                 'working_minutes' => $attendance->working_minutes,
                 'attendance_status' => $attendance->attendance_status,
-                'approval_status' => $attendance->approval_status,
                 'remarks' => $attendance->remarks,
             ];
 
-            if (isset($data['check_in'])) {
-                $attendance->check_in = $data['check_in'];
-            }
-            if (isset($data['check_out'])) {
-                $attendance->check_out = $data['check_out'];
-            }
-            if (isset($data['attendance_status'])) {
-                $attendance->attendance_status = $data['attendance_status'];
-            }
-            if (isset($data['approval_status'])) {
-                $attendance->approval_status = $data['approval_status'];
-            }
-            if (isset($data['remarks'])) {
-                $attendance->remarks = $data['remarks'];
+            foreach (['check_in', 'check_out', 'attendance_status', 'remarks'] as $field) {
+                if (isset($data[$field])) {
+                    $attendance->{$field} = $data[$field];
+                }
             }
 
-            // Recalculate working minutes server-side
             if ($attendance->check_in && $attendance->check_out) {
                 $attendance->working_minutes = $this->calculateWorkingMinutes(
                     $attendance->check_in,
@@ -399,13 +475,17 @@ class AttendanceService
                 "Attendance corrected by Super Admin {$admin->name}".($reason ? ". Reason: {$reason}" : ''),
                 [
                     'old' => $oldValues,
-                    'new' => $attendance->only(['check_in', 'check_out', 'working_minutes', 'attendance_status', 'approval_status', 'remarks']),
+                    'new' => $attendance->only(['check_in', 'check_out', 'working_minutes', 'attendance_status', 'remarks']),
                     'correction_reason' => $reason,
                 ]
             );
-
-            return $attendance;
         });
+
+        if ($newApproval && $newApproval !== $oldApproval) {
+            $this->setApprovalStatus($attendance, $newApproval, $admin, $reason);
+        }
+
+        return $attendance;
     }
 
     /**
@@ -476,25 +556,25 @@ class AttendanceService
         $approvalStatus = $filters['approval_status'] ?? null;
 
         $query = User::query()
-            ->with(['attendances' => function ($q) use ($date) {
-                $q->where('attendance_date', $date);
-            }])
-            ->when($userId, function ($q) use ($userId) {
-                if (is_array($userId)) {
-                    $cleanIds = array_filter($userId);
-                    if (! empty($cleanIds)) {
-                        $q->whereIn('id', $cleanIds);
-                    }
-                } else {
-                    $q->where('id', $userId);
+        ->with(['attendances' => function ($q) use ($date) {
+            $q->where('attendance_date', $date);
+        }])
+        ->when($userId, function ($q) use ($userId) {
+            if (is_array($userId)) {
+                $cleanIds = array_filter($userId);
+                if (! empty($cleanIds)) {
+                    $q->whereIn('id', $cleanIds);
                 }
-            })
-            ->when($search, function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
-                    $sub->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
+            } else {
+                $q->where('id', $userId);
+            }
+        })
+        ->when($search, function ($q) use ($search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
             });
+        });
 
         if ($attendanceStatus) {
             if ($attendanceStatus === 'absent') {
@@ -503,13 +583,13 @@ class AttendanceService
                         $sub->where('attendance_date', $date);
                     })->orWhereHas('attendances', function ($sub) use ($date) {
                         $sub->where('attendance_date', $date)
-                            ->where('attendance_status', 'absent');
+                        ->where('attendance_status', 'absent');
                     });
                 });
             } else {
                 $query->whereHas('attendances', function ($q) use ($date, $attendanceStatus) {
                     $q->where('attendance_date', $date)
-                        ->where('attendance_status', $attendanceStatus);
+                    ->where('attendance_status', $attendanceStatus);
                 });
             }
         }
@@ -522,12 +602,12 @@ class AttendanceService
             } elseif ($approvalStatus === 'submitted') {
                 $query->whereHas('attendances', function ($q) use ($date) {
                     $q->where('attendance_date', $date)
-                        ->whereIn('approval_status', ['pending', 'approved', 'rejected']);
+                    ->whereIn('approval_status', ['pending', 'approved', 'rejected']);
                 });
             } else {
                 $query->whereHas('attendances', function ($q) use ($date, $approvalStatus) {
                     $q->where('attendance_date', $date)
-                        ->where('approval_status', $approvalStatus);
+                    ->where('approval_status', $approvalStatus);
                 });
             }
         }
@@ -537,7 +617,6 @@ class AttendanceService
 
     /**
      * Compute monthly attendance summary per user for a given month (YYYY-MM).
-     * Strictly avoids leave/holiday/payroll/salary logic.
      */
     public function getMonthlyUserStats(Authenticatable|User $user, string $month): array
     {
@@ -545,14 +624,13 @@ class AttendanceService
         $endDate = $startDate->copy()->endOfMonth();
         $today = $this->today();
 
-        // Denominator: Total calendar days elapsed in this month up to today (or month end)
         $lastDay = $endDate->lessThan($today) ? $endDate : $today;
         $totalDaysInPeriod = max(1, $startDate->diffInDays($lastDay) + 1);
 
         $userId = $user->getAuthIdentifier() ?? $user->id;
         $records = Attendance::where('user_id', $userId)
-            ->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-            ->get();
+        ->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+        ->get();
 
         $presentDays = $records->where('attendance_status', 'present')->where('approval_status', 'approved')->count();
         $halfDays = $records->where('attendance_status', 'half_day')->where('approval_status', 'approved')->count();
@@ -566,9 +644,6 @@ class AttendanceService
         $remainingMinutes = $totalWorkingMinutes % 60;
         $formattedHours = "{$totalHours}h {$remainingMinutes}m";
 
-        // Defined Attendance Percentage Formula:
-        // Effective attendance days = Present (1.0) + Half Day (0.5).
-        // Denominator = Total period calendar days elapsed up to current date.
         $effectiveDays = $presentDays + ($halfDays * 0.5);
         $attendancePercentage = round(($effectiveDays / $totalDaysInPeriod) * 100, 1);
 
@@ -607,44 +682,22 @@ class AttendanceService
         $endDate = Carbon::parse("{$month}-01", config('app.timezone'))->endOfMonth()->format('Y-m-d');
 
         $usersQuery = User::query()
-            ->when(! empty($cleanIds), function ($q) use ($cleanIds) {
-                $q->whereIn('id', $cleanIds);
-            })
-            ->when($search, function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
-                    $sub->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
-            })
-            ->when($status, function ($q) use ($status, $startDate, $endDate) {
-                if ($status === 'pending') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('approval_status', 'pending');
-                    });
-                } elseif ($status === 'absent') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'absent');
-                    });
-                } elseif ($status === 'half_day') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'half_day');
-                    });
-                } elseif ($status === 'present') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'present')
-                            ->where('approval_status', 'approved');
-                    });
-                }
-            })
-            ->orderBy('name');
+        ->when(! empty($cleanIds), function ($q) use ($cleanIds) {
+            $q->whereIn('id', $cleanIds);
+        })
+        ->when($search, function ($q) use ($search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+            });
+        })
+        ->when($status, function ($q) use ($status, $startDate, $endDate) {
+            $this->applyMonthlyStatusFilter($q, $status, $startDate, $endDate);
+        })
+        ->orderBy('name');
 
         $users = $usersQuery->paginate($perPage)->withQueryString();
 
-        // Transform collection items with their calculated monthly stats
         $users->getCollection()->transform(function ($user) use ($month) {
             $user->monthly_stats = $this->getMonthlyUserStats($user, $month);
 
@@ -652,6 +705,35 @@ class AttendanceService
         });
 
         return $users;
+    }
+
+    /**
+     * Shared monthly status filter (report + CSV export).
+     */
+    protected function applyMonthlyStatusFilter($q, string $status, string $startDate, string $endDate): void
+    {
+        if ($status === 'pending') {
+            $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
+                $sub->whereBetween('attendance_date', [$startDate, $endDate])
+                ->where('approval_status', 'pending');
+            });
+        } elseif ($status === 'absent') {
+            $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
+                $sub->whereBetween('attendance_date', [$startDate, $endDate])
+                ->where('attendance_status', 'absent');
+            });
+        } elseif ($status === 'half_day') {
+            $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
+                $sub->whereBetween('attendance_date', [$startDate, $endDate])
+                ->where('attendance_status', 'half_day');
+            });
+        } elseif ($status === 'present') {
+            $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
+                $sub->whereBetween('attendance_date', [$startDate, $endDate])
+                ->where('attendance_status', 'present')
+                ->where('approval_status', 'approved');
+            });
+        }
     }
 
     /**
@@ -701,12 +783,12 @@ class AttendanceService
         $daysInMonth = $startDate->daysInMonth;
 
         $attendances = Attendance::where('user_id', $userId)
-            ->whereBetween('attendance_date', [
-                $startDate->format('Y-m-d'),
-                $startDate->copy()->endOfMonth()->format('Y-m-d'),
-            ])
-            ->get()
-            ->keyBy(fn ($item) => $item->attendance_date?->format('Y-m-d') ?? Carbon::parse($item->date)->format('Y-m-d'));
+        ->whereBetween('attendance_date', [
+            $startDate->format('Y-m-d'),
+            $startDate->copy()->endOfMonth()->format('Y-m-d'),
+        ])
+        ->get()
+        ->keyBy(fn ($item) => $item->attendance_date?->format('Y-m-d') ?? Carbon::parse($item->date)->format('Y-m-d'));
 
         $calendarDays = [];
 
@@ -758,13 +840,51 @@ class AttendanceService
     }
 
     /**
-     * Stream CSV export for daily attendance.
+     * Stream CSV export for daily attendance (filters ke saath).
      */
     public function exportDailyCsv(string $date, array $filters = []): StreamedResponse
     {
+        $userIds = $filters['user_id'] ?? null;
+        $userIds = is_array($userIds) ? array_filter($userIds) : array_filter([$userIds]);
+        $search = $filters['search'] ?? null;
+        $approvalStatus = $filters['approval_status'] ?? null;
+        $attendanceStatus = $filters['attendance_status'] ?? null;
+
         $users = User::with(['attendances' => function ($q) use ($date) {
             $q->where('attendance_date', $date);
-        }])->orderBy('name')->get();
+        }])
+        ->when(! empty($userIds), fn ($q) => $q->whereIn('id', $userIds))
+        ->when($search, function ($q) use ($search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+            });
+        })
+        ->orderBy('name')
+        ->get()
+        ->filter(function ($user) use ($approvalStatus, $attendanceStatus) {
+            $att = $user->attendances->first();
+
+            if ($approvalStatus) {
+                $current = $att ? ($att->approval_status ?: 'draft') : 'not_submitted';
+                if ($approvalStatus === 'submitted') {
+                    if (! in_array($current, ['pending', 'approved', 'rejected'], true)) {
+                        return false;
+                    }
+                } elseif ($current !== $approvalStatus) {
+                    return false;
+                }
+            }
+
+            if ($attendanceStatus) {
+                $currentAtt = $att ? $att->attendance_status : 'absent';
+                if ($currentAtt !== $attendanceStatus) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
 
         $headers = [
             'Content-Type' => 'text/csv',
@@ -800,7 +920,7 @@ class AttendanceService
                     $att && $att->check_out ? Carbon::parse($att->check_out)->format('h:i A') : '-',
                     $att ? $att->formatted_working_hours : '0h 0m',
                     $att ? ucfirst(str_replace('_', ' ', $att->attendance_status)) : 'Absent (Not Submitted)',
-                    $att ? ucfirst($att->approval_status) : 'Not Submitted',
+                    $att ? ucfirst($att->approval_status ?: 'draft') : 'Not Submitted',
                     $att ? ($att->remarks ?? '-') : '-',
                     $att ? ($att->rejection_reason ?? '-') : '-',
                 ]);
@@ -822,38 +942,17 @@ class AttendanceService
         $endDate = Carbon::parse("{$month}-01", config('app.timezone'))->endOfMonth()->format('Y-m-d');
 
         $usersQuery = User::query()
-            ->when($userId, fn ($q) => $q->where('id', $userId))
-            ->when($search, function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
-                    $sub->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
-            })
-            ->when($status, function ($q) use ($status, $startDate, $endDate) {
-                if ($status === 'pending') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('approval_status', 'pending');
-                    });
-                } elseif ($status === 'absent') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'absent');
-                    });
-                } elseif ($status === 'half_day') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'half_day');
-                    });
-                } elseif ($status === 'present') {
-                    $q->whereHas('attendances', function ($sub) use ($startDate, $endDate) {
-                        $sub->whereBetween('attendance_date', [$startDate, $endDate])
-                            ->where('attendance_status', 'present')
-                            ->where('approval_status', 'approved');
-                    });
-                }
-            })
-            ->orderBy('name');
+        ->when($userId, fn ($q) => $q->where('id', $userId))
+        ->when($search, function ($q) use ($search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+            });
+        })
+        ->when($status, function ($q) use ($status, $startDate, $endDate) {
+            $this->applyMonthlyStatusFilter($q, $status, $startDate, $endDate);
+        })
+        ->orderBy('name');
 
         $users = $usersQuery->get();
 

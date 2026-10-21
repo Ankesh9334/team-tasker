@@ -23,18 +23,47 @@ class AttendanceController extends Controller
         $this->attendanceService = $attendanceService;
     }
 
+    /* ---------------------------------------------------------------
+     |  Helpers
+     | --------------------------------------------------------------- */
+
+    /**
+     * Sirf Super Admin approval status badal sakta hai.
+     */
+    protected function isSuperAdmin(): bool
+    {
+        $u = Auth::user();
+
+        return $u && (($u instanceof \App\Models\Admin)
+            || (method_exists($u, 'hasRole') && $u->hasRole('super-admin')));
+    }
+
+    protected function ensureSuperAdmin(): void
+    {
+        abort_unless($this->isSuperAdmin(), 403, 'Only Super Admin can change attendance approval status.');
+    }
+
+    protected function resolveDate(?string $date): string
+    {
+        $today = $this->attendanceService->today();
+
+        if (! $date || $date === 'today') {
+            return $today->format('Y-m-d');
+        }
+        if ($date === 'yesterday') {
+            return $today->copy()->subDay()->format('Y-m-d');
+        }
+
+        return $date;
+    }
+
     /**
      * Attendance Dashboard.
      */
     public function dashboard(Request $request)
     {
         $user = Auth::user();
-        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
-        if ($date === 'today') {
-            $date = $this->attendanceService->today()->format('Y-m-d');
-        } elseif ($date === 'yesterday') {
-            $date = $this->attendanceService->today()->subDay()->format('Y-m-d');
-        }
+        $date = $this->resolveDate($request->input('date'));
 
         $today = $this->attendanceService->today();
         $todayStr = $today->format('Y-m-d');
@@ -55,23 +84,23 @@ class AttendanceController extends Controller
         $dailyStats = $this->attendanceService->getDailyStats($date);
 
         $attendances = Attendance::with(['user', 'approver'])
-            ->where('attendance_date', $date)
-            ->whereIn('user_id', $users->pluck('id'))
-            ->get()
-            ->keyBy('user_id');
+        ->where('attendance_date', $date)
+        ->whereIn('user_id', $users->pluck('id'))
+        ->get()
+        ->keyBy('user_id');
 
         $timeLogCounts = TimeLog::whereIn('user_id', $users->pluck('id'))
-            ->whereDate('start_time', $date)
-            ->selectRaw('user_id, count(*) as count, sum(duration) as total_duration')
-            ->groupBy('user_id')
-            ->get()
-            ->keyBy('user_id');
+        ->whereDate('start_time', $date)
+        ->selectRaw('user_id, count(*) as count, sum(duration) as total_duration')
+        ->groupBy('user_id')
+        ->get()
+        ->keyBy('user_id');
 
         $myAttendance = Attendance::where('user_id', $user->id)
-            ->where(function ($q) use ($todayStr) {
-                $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
-            })
-            ->first();
+        ->where(function ($q) use ($todayStr) {
+            $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
+        })
+        ->first();
 
         // 7-Day Trend Graph Data
         $chartLabels = [];
@@ -93,10 +122,10 @@ class AttendanceController extends Controller
             $chartAbsent[] = $stats['not_submitted'] + $stats['rejected'];
 
             $myAtt = Attendance::where('user_id', $user->id)
-                ->where(function ($q) use ($dateStr) {
-                    $q->where('attendance_date', $dateStr)->orWhere('date', $dateStr);
-                })
-                ->first();
+            ->where(function ($q) use ($dateStr) {
+                $q->where('attendance_date', $dateStr)->orWhere('date', $dateStr);
+            })
+            ->first();
 
             $personalWorkHours[] = $myAtt ? round(((float) $myAtt->working_minutes) / 60, 2) : 0;
         }
@@ -134,12 +163,7 @@ class AttendanceController extends Controller
     {
         Gate::authorize('viewAny', Attendance::class);
 
-        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
-        if ($date === 'today') {
-            $date = $this->attendanceService->today()->format('Y-m-d');
-        } elseif ($date === 'yesterday') {
-            $date = $this->attendanceService->today()->subDay()->format('Y-m-d');
-        }
+        $date = $this->resolveDate($request->input('date'));
 
         $selectedUserId = $request->input('user_id') ?: $request->input('user_ids');
         if (is_array($selectedUserId)) {
@@ -165,20 +189,23 @@ class AttendanceController extends Controller
         $dailyStats = $this->attendanceService->getDailyStats($date);
 
         $attendances = Attendance::with(['user', 'approver'])
-            ->where('attendance_date', $date)
-            ->whereIn('user_id', $users->pluck('id'))
-            ->get()
-            ->keyBy('user_id');
+        ->where('attendance_date', $date)
+        ->whereIn('user_id', $users->pluck('id'))
+        ->get()
+        ->keyBy('user_id');
 
         // Summarize time log activities for displayed users on this date
         $timeLogCounts = TimeLog::whereIn('user_id', $users->pluck('id'))
-            ->whereDate('start_time', $date)
-            ->selectRaw('user_id, count(*) as count, sum(duration) as total_duration')
-            ->groupBy('user_id')
-            ->get()
-            ->keyBy('user_id');
+        ->whereDate('start_time', $date)
+        ->selectRaw('user_id, count(*) as count, sum(duration) as total_duration')
+        ->groupBy('user_id')
+        ->get()
+        ->keyBy('user_id');
 
         $allUsers = User::orderBy('name')->get(['id', 'name', 'email']);
+
+        // Dropdown / bulk actions sirf Super Admin ko dikhenge
+        $isSuperAdmin = $this->isSuperAdmin();
 
         return view('admin.attendance.daily', compact(
             'users',
@@ -187,7 +214,8 @@ class AttendanceController extends Controller
             'dailyStats',
             'allUsers',
             'timeLogCounts',
-            'selectedUserId'
+            'selectedUserId',
+            'isSuperAdmin'
         ));
     }
 
@@ -199,62 +227,58 @@ class AttendanceController extends Controller
         Gate::authorize('viewAny', Attendance::class);
 
         $userId = $request->input('user_id');
-        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
-        if ($date === 'today') {
-            $date = $this->attendanceService->today()->format('Y-m-d');
-        } elseif ($date === 'yesterday') {
-            $date = $this->attendanceService->today()->subDay()->format('Y-m-d');
-        }
+        $date = $this->resolveDate($request->input('date'));
 
         $user = User::with('role')->findOrFail($userId);
 
         $attendance = Attendance::with(['approver', 'logs.user'])
-            ->where('user_id', $userId)
-            ->where('attendance_date', $date)
-            ->first();
+        ->where('user_id', $userId)
+        ->where('attendance_date', $date)
+        ->first();
 
         // Time logs / task activity on that date
         $timeLogs = TimeLog::where('user_id', $userId)
-            ->whereDate('start_time', $date)
-            ->with('task.project')
-            ->orderBy('start_time')
-            ->get()
-            ->map(function ($log) {
-                return [
-                    'id' => $log->id,
-                    'task_id' => $log->task_id,
-                    'task_title' => $log->task?->title ?? 'General Task',
-                    'project_name' => $log->task?->project?->name ?? 'General',
-                    'start_time' => $log->start_time ? $log->start_time->format('h:i A') : '--:--',
-                    'end_time' => $log->end_time ? $log->end_time->format('h:i A') : '--:--',
-                    'duration_seconds' => $log->duration,
-                    'formatted_duration' => gmdate('H\h i\m', $log->duration),
-                    'description' => $log->description,
-                    'mode' => $log->mode,
-                ];
-            });
+        ->whereDate('start_time', $date)
+        ->with('task.project')
+        ->orderBy('start_time')
+        ->get()
+        ->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'task_id' => $log->task_id,
+                'task_title' => $log->task?->title ?? 'General Task',
+                'project_name' => $log->task?->project?->name ?? 'General',
+                'start_time' => $log->start_time ? $log->start_time->format('h:i A') : '--:--',
+                'end_time' => $log->end_time ? $log->end_time->format('h:i A') : '--:--',
+                'duration_seconds' => $log->duration,
+                'formatted_duration' => gmdate('H\h i\m', $log->duration),
+                'description' => $log->description,
+                'mode' => $log->mode,
+            ];
+        });
 
         // Task logs / notes on that date
         $taskLogs = TaskLog::where('user_id', $userId)
-            ->whereDate('created_at', $date)
-            ->with('task')
-            ->orderBy('created_at')
-            ->get()
-            ->map(function ($log) {
-                return [
-                    'id' => $log->id,
-                    'task_id' => $log->task_id,
-                    'task_title' => $log->task?->title ?? 'General',
-                    'note' => $log->note,
-                    'type' => $log->type,
-                    'created_at' => $log->created_at ? $log->created_at->format('h:i A') : '',
-                ];
-            });
+        ->whereDate('created_at', $date)
+        ->with('task')
+        ->orderBy('created_at')
+        ->get()
+        ->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'task_id' => $log->task_id,
+                'task_title' => $log->task?->title ?? 'General',
+                'note' => $log->note,
+                'type' => $log->type,
+                'created_at' => $log->created_at ? $log->created_at->format('h:i A') : '',
+            ];
+        });
 
         $totalTrackedSeconds = $timeLogs->sum('duration_seconds');
         $formattedTotalTracked = gmdate('H\h i\m', $totalTrackedSeconds);
 
-        $canApprove = Auth::user()->hasRole('super-admin') || Auth::user()->hasPermission('attendance.approve') || Auth::user()->hasPermission('attendance.manage');
+        // Sirf Super Admin approve / reject kar sakta hai
+        $canApprove = $this->isSuperAdmin();
 
         return response()->json([
             'success' => true,
@@ -299,25 +323,25 @@ class AttendanceController extends Controller
         $todayStr = $today->format('Y-m-d');
 
         $myAttendance = Attendance::with(['logs.user', 'approver'])
-            ->where('user_id', $user->id)
-            ->where(function ($q) use ($todayStr) {
-                $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
-            })
-            ->first();
+        ->where('user_id', $user->id)
+        ->where(function ($q) use ($todayStr) {
+            $q->where('attendance_date', $todayStr)->orWhere('date', $todayStr);
+        })
+        ->first();
 
         $search = $request->input('search');
 
         $timeLogsQuery = TimeLog::where('user_id', $user->id)
-            ->whereDate('start_time', $todayStr)
-            ->with('task.project')
-            ->orderBy('start_time');
+        ->whereDate('start_time', $todayStr)
+        ->with('task.project')
+        ->orderBy('start_time');
 
         if ($search) {
             $timeLogsQuery->where(function ($q) use ($search) {
                 $q->where('description', 'like', "%{$search}%")
-                    ->orWhereHas('task', function ($tq) use ($search) {
-                        $tq->where('title', 'like', "%{$search}%");
-                    });
+                ->orWhereHas('task', function ($tq) use ($search) {
+                    $tq->where('title', 'like', "%{$search}%");
+                });
             });
         }
 
@@ -326,12 +350,11 @@ class AttendanceController extends Controller
         $totalTrackedSeconds = $timeLogs->sum('duration');
         $formattedTotalTracked = gmdate('H\h i\m', $totalTrackedSeconds);
 
-        // Fetch recent attendance history for the user's daily attendance datagrid
         $recentAttendances = Attendance::where('user_id', $user->id)
-            ->orderByDesc('attendance_date')
-            ->orderByDesc('date')
-            ->paginate(10, ['*'], 'history_page')
-            ->withQueryString();
+        ->orderByDesc('attendance_date')
+        ->orderByDesc('date')
+        ->paginate(10, ['*'], 'history_page')
+        ->withQueryString();
 
         return view('admin.attendance.my-daily', compact(
             'myAttendance',
@@ -371,7 +394,6 @@ class AttendanceController extends Controller
         $teamStats = $this->attendanceService->getMonthlyTeamStats($month);
         $allUsers = User::orderBy('name')->get(['id', 'name', 'email']);
 
-        // If a specific user is selected for detailed inspection:
         $selectedUser = null;
         $selectedUserCalendar = [];
         $selectedUserStats = null;
@@ -411,10 +433,10 @@ class AttendanceController extends Controller
         $endDate = $startDate->copy()->endOfMonth();
 
         $query = Attendance::where('user_id', $user->id)
-            ->where(function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-                    ->orWhereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
-            });
+        ->where(function ($q) use ($startDate, $endDate) {
+            $q->whereBetween('attendance_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->orWhereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+        });
 
         if ($status) {
             if (in_array($status, ['pending', 'approved', 'rejected'])) {
@@ -427,15 +449,15 @@ class AttendanceController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('remarks', 'like', "%{$search}%")
-                    ->orWhere('attendance_date', 'like', "%{$search}%")
-                    ->orWhere('date', 'like', "%{$search}%");
+                ->orWhere('attendance_date', 'like', "%{$search}%")
+                ->orWhere('date', 'like', "%{$search}%");
             });
         }
 
         $records = $query->orderByDesc('attendance_date')
-            ->orderByDesc('date')
-            ->paginate(15)
-            ->withQueryString();
+        ->orderByDesc('date')
+        ->paginate(15)
+        ->withQueryString();
 
         return view('admin.attendance.my-monthly', compact('user', 'month', 'status', 'search', 'stats', 'calendar', 'records'));
     }
@@ -461,7 +483,7 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Punch Out (strictly decoupled from GPS).
+     * Punch Out. Status draft hi rehta hai jab tak Super Admin change na kare.
      */
     public function clockOut(Request $request)
     {
@@ -513,11 +535,11 @@ class AttendanceController extends Controller
         $userId = $user->getAuthIdentifier();
 
         $attendance = Attendance::where('user_id', $userId)
-            ->where(function ($q) use ($today) {
-                $q->where('attendance_date', $today->format('Y-m-d'))
-                    ->orWhere('date', $today->format('Y-m-d'));
-            })
-            ->first();
+        ->where(function ($q) use ($today) {
+            $q->where('attendance_date', $today->format('Y-m-d'))
+            ->orWhere('date', $today->format('Y-m-d'));
+        })
+        ->first();
 
         $remarks = $request->input('remarks');
 
@@ -561,6 +583,8 @@ class AttendanceController extends Controller
      */
     public function approve(Request $request, $id)
     {
+        $this->ensureSuperAdmin();
+
         $admin = Auth::user();
         $attendance = Attendance::findOrFail($id);
 
@@ -580,6 +604,8 @@ class AttendanceController extends Controller
      */
     public function reject(Request $request, $id)
     {
+        $this->ensureSuperAdmin();
+
         $admin = Auth::user();
         $attendance = Attendance::findOrFail($id);
 
@@ -630,6 +656,8 @@ class AttendanceController extends Controller
      */
     public function bulkApprove(Request $request)
     {
+        $this->ensureSuperAdmin();
+
         $admin = Auth::user();
         Gate::authorize('bulkApprove', Attendance::class);
 
@@ -656,6 +684,8 @@ class AttendanceController extends Controller
      */
     public function bulkAction(Request $request)
     {
+        $this->ensureSuperAdmin();
+
         $admin = Auth::user();
         Gate::authorize('bulkApprove', Attendance::class);
 
@@ -670,14 +700,10 @@ class AttendanceController extends Controller
         }
 
         $action = $request->input('action');
-        $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
-        if ($date === 'today') {
-            $date = $this->attendanceService->today()->format('Y-m-d');
-        } elseif ($date === 'yesterday') {
-            $date = $this->attendanceService->today()->subDay()->format('Y-m-d');
-        }
+        $date = $this->resolveDate($request->input('date'));
 
         $reason = $request->input('rejection_reason', 'Bulk action applied by administrator.');
+        $adminType = ($admin instanceof \App\Models\Admin) ? 'admin' : 'user';
 
         $count = 0;
         foreach ($ids as $userId) {
@@ -693,91 +719,92 @@ class AttendanceController extends Controller
 
             switch ($action) {
                 case 'approve':
-                    if (! $attendance->exists) {
-                        $attendance->attendance_status = 'present';
-                        $attendance->check_in = '09:00:00';
-                        $attendance->check_out = '18:00:00';
-                        $attendance->working_minutes = 540;
-                    }
-                    $attendance->approval_status = 'approved';
-                    $attendance->approved_at = now();
-                    $attendance->approved_by = $admin->id;
-                    $attendance->approved_by_type = ($admin instanceof \App\Models\Admin) ? 'admin' : 'user';
-                    $attendance->rejection_reason = null;
-                    $attendance->save();
+                if (! $attendance->exists) {
+                    $attendance->attendance_status = 'present';
+                    $attendance->check_in = '09:00:00';
+                    $attendance->check_out = '18:00:00';
+                    $attendance->working_minutes = 540;
+                }
+                $attendance->approval_status = 'approved';
+                $attendance->approved_at = now();
+                $attendance->approved_by = $admin->id;
+                $attendance->approved_by_type = $adminType;
+                $attendance->rejection_reason = null;
+                $attendance->save();
 
-                    $this->attendanceService->logActivity(
-                        $attendance,
-                        $admin,
-                        'attendance.approved',
-                        "Bulk approved attendance report for {$user->name} on {$date}."
-                    );
-                    $count++;
-                    break;
+                $this->attendanceService->logActivity(
+                    $attendance,
+                    $admin,
+                    'attendance.approved',
+                    "Bulk approved attendance report for {$user->name} on {$date}."
+                );
+                $count++;
+                break;
 
                 case 'reject':
-                    if (! $attendance->exists) {
-                        $attendance->attendance_status = 'absent';
-                        $attendance->working_minutes = 0;
-                    }
-                    $attendance->approval_status = 'rejected';
-                    $attendance->rejection_reason = $reason;
-                    $attendance->approved_at = null;
-                    $attendance->approved_by = null;
-                    $attendance->save();
-
-                    $this->attendanceService->logActivity(
-                        $attendance,
-                        $admin,
-                        'attendance.rejected',
-                        "Bulk rejected report for {$user->name} on {$date}: {$reason}"
-                    );
-                    $count++;
-                    break;
-
-                case 'mark_present':
-                    if (! $attendance->exists) {
-                        $attendance->check_in = '09:00:00';
-                        $attendance->check_out = '18:00:00';
-                        $attendance->working_minutes = 540;
-                    }
-                    $attendance->attendance_status = 'present';
-                    $attendance->approval_status = 'approved';
-                    $attendance->approved_at = now();
-                    $attendance->approved_by = $admin->id;
-                    $attendance->approved_by_type = ($admin instanceof \App\Models\Admin) ? 'admin' : 'user';
-                    $attendance->rejection_reason = null;
-                    $attendance->save();
-
-                    $this->attendanceService->logActivity(
-                        $attendance,
-                        $admin,
-                        'attendance.marked_present',
-                        "Marked present in bulk for {$user->name} on {$date}."
-                    );
-                    $count++;
-                    break;
-
-                case 'mark_absent':
+                if (! $attendance->exists) {
                     $attendance->attendance_status = 'absent';
                     $attendance->working_minutes = 0;
-                    $attendance->approval_status = 'approved';
-                    $attendance->approved_at = now();
-                    $attendance->approved_by = $admin->id;
-                    $attendance->approved_by_type = ($admin instanceof \App\Models\Admin) ? 'admin' : 'user';
-                    $attendance->save();
+                }
+                $attendance->approval_status = 'rejected';
+                $attendance->rejection_reason = $reason;
+                $attendance->approved_at = null;
+                $attendance->approved_by = null;
+                $attendance->approved_by_type = null;
+                $attendance->save();
 
-                    $this->attendanceService->logActivity(
-                        $attendance,
-                        $admin,
-                        'attendance.marked_absent',
-                        "Marked absent in bulk for {$user->name} on {$date}."
-                    );
-                    $count++;
-                    break;
+                $this->attendanceService->logActivity(
+                    $attendance,
+                    $admin,
+                    'attendance.rejected',
+                    "Bulk rejected report for {$user->name} on {$date}: {$reason}"
+                );
+                $count++;
+                break;
+
+                case 'mark_present':
+                if (! $attendance->exists) {
+                    $attendance->check_in = '09:00:00';
+                    $attendance->check_out = '18:00:00';
+                    $attendance->working_minutes = 540;
+                }
+                $attendance->attendance_status = 'present';
+                $attendance->approval_status = 'approved';
+                $attendance->approved_at = now();
+                $attendance->approved_by = $admin->id;
+                $attendance->approved_by_type = $adminType;
+                $attendance->rejection_reason = null;
+                $attendance->save();
+
+                $this->attendanceService->logActivity(
+                    $attendance,
+                    $admin,
+                    'attendance.marked_present',
+                    "Marked present in bulk for {$user->name} on {$date}."
+                );
+                $count++;
+                break;
+
+                case 'mark_absent':
+                $attendance->attendance_status = 'absent';
+                $attendance->working_minutes = 0;
+                $attendance->approval_status = 'approved';
+                $attendance->approved_at = now();
+                $attendance->approved_by = $admin->id;
+                $attendance->approved_by_type = $adminType;
+                $attendance->save();
+
+                $this->attendanceService->logActivity(
+                    $attendance,
+                    $admin,
+                    'attendance.marked_absent',
+                    "Marked absent in bulk for {$user->name} on {$date}."
+                );
+                $count++;
+                break;
 
                 default:
-                    return back()->with('error', 'Invalid bulk action specified.');
+                return back()->with('error', 'Invalid bulk action specified.');
             }
         }
 
@@ -786,6 +813,7 @@ class AttendanceController extends Controller
 
     /**
      * Super Admin attendance manual correction.
+     * Naya record hamesha `draft` se start hota hai.
      */
     public function updateDailyAttendance(Request $request)
     {
@@ -796,6 +824,7 @@ class AttendanceController extends Controller
             'user_id' => 'required|exists:users,id',
             'date' => 'required|date',
             'attendance_status' => 'required|in:present,absent,half_day,Present,Late,Half-Day,Absent',
+            'approval_status' => 'nullable|in:draft,pending,approved,rejected',
             'check_in' => 'nullable|date_format:H:i',
             'check_out' => 'nullable|date_format:H:i',
             'remarks' => 'nullable|string|max:1000',
@@ -810,23 +839,36 @@ class AttendanceController extends Controller
         $statusMapped = match (strtolower($request->attendance_status)) {
             'absent' => 'absent',
             'half-day', 'half_day' => 'half_day',
-            default => 'present'
+            default => 'present',
         };
 
         $data = [
             'attendance_status' => $statusMapped,
             'check_in' => $request->check_in,
             'check_out' => $request->check_out,
-            'remarks' => $request->remarks ?: $request->notes,
+            'remarks' => $request->remarks,
         ];
+
+        // Approval status sirf Super Admin badal sakta hai
+        if ($this->isSuperAdmin() && $request->filled('approval_status')) {
+            $data['approval_status'] = $request->approval_status;
+        }
 
         if (! $attendance->exists) {
             $attendance->user_id = $request->user_id;
             $attendance->attendance_date = $request->date;
-            $attendance->approval_status = 'approved';
-            $attendance->approved_at = now();
-            $attendance->approved_by = $admin->id;
-            $attendance->fill($data);
+            $attendance->approval_status = 'draft';
+            $attendance->fill(collect($data)->except('approval_status')->all());
+
+            if ($attendance->check_in && $attendance->check_out) {
+                $attendance->working_minutes = $this->attendanceService->calculateWorkingMinutes(
+                    $attendance->check_in,
+                    $attendance->check_out,
+                    $request->date
+                );
+            } else {
+                $attendance->working_minutes = $attendance->working_minutes ?? 0;
+            }
             $attendance->save();
 
             $this->attendanceService->logActivity(
@@ -836,6 +878,15 @@ class AttendanceController extends Controller
                 "Attendance record manually created by {$admin->name}.",
                 ['created_by' => $admin->id]
             );
+
+            if (isset($data['approval_status']) && $data['approval_status'] !== 'draft') {
+                $this->attendanceService->setApprovalStatus(
+                    $attendance,
+                    $data['approval_status'],
+                    $admin,
+                    $request->input('correction_reason')
+                );
+            }
         } else {
             $this->attendanceService->correctAttendance(
                 $attendance,
@@ -846,6 +897,101 @@ class AttendanceController extends Controller
         }
 
         return redirect()->back()->with('success', 'Attendance record saved successfully.');
+    }
+
+    /**
+     * Daily page ke dropdown se approval status badlo (Super Admin only).
+     * Record na ho (Not Submitted) to pehle draft record banta hai, phir status set hota hai.
+     */
+    public function changeApprovalStatus(Request $request)
+    {
+        $this->ensureSuperAdmin();
+        $actor = Auth::user();
+
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'date' => 'required|date',
+            'approval_status' => 'required|in:draft,pending,approved,rejected',
+            'rejection_reason' => 'nullable|string|max:1000',
+        ]);
+
+        $date = Carbon::parse($validated['date'])->format('Y-m-d');
+        $newStatus = $validated['approval_status'];
+
+        if ($newStatus === 'rejected' && blank($validated['rejection_reason'] ?? null)) {
+            return back()->with('error', 'Rejection reason is required.');
+        }
+
+        $attendance = Attendance::firstOrNew([
+            'user_id' => $validated['user_id'],
+            'attendance_date' => $date,
+        ]);
+
+        if (! $attendance->exists) {
+            $attendance->attendance_status = 'absent';
+            $attendance->working_minutes = 0;
+            $attendance->approval_status = 'draft';
+            $attendance->save();
+
+            $this->attendanceService->logActivity(
+                $attendance,
+                $actor,
+                'attendance.created',
+                "Attendance record created by {$actor->name} while changing approval status."
+            );
+        }
+
+        $oldStatus = $attendance->approval_status ?: 'draft';
+        if ($oldStatus === $newStatus) {
+            return back()->with('success', 'Status is already '.ucfirst($newStatus).'.');
+        }
+
+        try {
+            $this->attendanceService->setApprovalStatus(
+                $attendance,
+                $newStatus,
+                $actor,
+                $validated['rejection_reason'] ?? null
+            );
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "Approval status for {$attendance->user->name} changed from "
+            .ucfirst($oldStatus).' to '.ucfirst($newStatus).'.');
+    }
+
+    /**
+     * Update attendance approval status by attendance id (Super Admin only).
+     */
+    public function updateApprovalStatus(Request $request, $attendance)
+    {
+        $this->ensureSuperAdmin();
+
+        $validated = $request->validate([
+            'approval_status' => 'required|in:draft,pending,approved,rejected',
+            'rejection_reason' => 'nullable|string|max:1000',
+        ]);
+
+        $attendance = Attendance::findOrFail($attendance);
+        $oldStatus = $attendance->approval_status ?: 'draft';
+
+        if ($oldStatus === $validated['approval_status']) {
+            return back()->with('success', 'Attendance status is already '.ucfirst($oldStatus).'.');
+        }
+
+        try {
+            $this->attendanceService->setApprovalStatus(
+                $attendance,
+                $validated['approval_status'],
+                Auth::user(),
+                $validated['rejection_reason'] ?? null
+            );
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Attendance status updated to '.ucfirst($validated['approval_status']).'.');
     }
 
     /**
@@ -882,12 +1028,14 @@ class AttendanceController extends Controller
             $userId = $request->input('user_id');
 
             if ($exportType === 'daily') {
-                $date = $request->input('date', $this->attendanceService->today()->format('Y-m-d'));
+                $date = $this->resolveDate($request->input('date'));
 
                 return $this->attendanceService->exportDailyCsv($date, $request->all());
             }
 
-            return $this->attendanceService->exportMonthlyCsv($month, $request->all(), $userId && $userId !== 'all' ? (int) $userId : null);
+            $monthlyUserId = is_array($userId) ? null : $userId;
+
+            return $this->attendanceService->exportMonthlyCsv($month, $request->all(), $monthlyUserId && $monthlyUserId !== 'all' ? (int) $monthlyUserId : null);
         }
 
         return view('admin.attendance.reports', compact('users'));
@@ -955,9 +1103,9 @@ class AttendanceController extends Controller
         // 1. Process Attendance Logs
         foreach ($attendances as $att) {
             $color = match ($att->attendance_status) {
-                'present' => '#10b981', // success
-                'half_day' => '#0ea5e9', // info
-                'absent' => '#ef4444', // danger
+                'present' => '#10b981',
+                'half_day' => '#0ea5e9',
+                'absent' => '#ef4444',
                 default => '#6b7280',
             };
 
@@ -967,6 +1115,8 @@ class AttendanceController extends Controller
                 $title .= ' [Pending]';
             } elseif ($att->approval_status === 'rejected') {
                 $title .= ' [Rejected]';
+            } elseif ($att->approval_status === 'draft') {
+                $title .= ' [Draft]';
             }
 
             $events[] = [
@@ -980,7 +1130,7 @@ class AttendanceController extends Controller
                 'extendedProps' => [
                     'is_request' => false,
                     'status' => ucfirst(str_replace('_', ' ', $att->attendance_status)),
-                    'approval_status' => ucfirst($att->approval_status ?? 'Approved'),
+                    'approval_status' => ucfirst($att->approval_status ?: 'draft'),
                     'check_in' => $att->check_in ? Carbon::parse($att->check_in)->format('h:i A') : '--:--',
                     'check_out' => $att->check_out ? Carbon::parse($att->check_out)->format('h:i A') : '--:--',
                     'working_hours' => $att->formatted_working_hours,
@@ -992,18 +1142,17 @@ class AttendanceController extends Controller
 
         // 2. Process Leave & Regularization Requests
         foreach ($requests as $req) {
-            $type = $req->type; // 'Leave', 'Regularization', 'Overtime'
-            $status = $req->status; // 'Pending', 'Approved', 'Rejected'
+            $type = $req->type;
+            $status = $req->status;
 
             $color = match ($status) {
                 'Approved' => $type === 'Leave' ? '#8b5cf6' : ($type === 'Overtime' ? '#06b6d4' : '#10b981'),
                 'Rejected' => '#ef4444',
-                default => '#f59e0b', // Pending is warning/amber
+                default => '#f59e0b',
             };
 
             $startDate = Carbon::parse($req->start_date);
             $endDate = $req->end_date ? Carbon::parse($req->end_date) : $startDate->copy();
-            // FullCalendar allDay end date is exclusive
             $exclusiveEndDate = $endDate->copy()->addDay()->format('Y-m-d');
 
             $titlePrefix = ($userId === 'all' && $req->user) ? "{$req->user->name} - " : '';
@@ -1055,30 +1204,30 @@ class AttendanceController extends Controller
         $isManager = Auth::user()->hasPermission('attendance.requests_manage') || Auth::user()->hasRole('super-admin');
 
         $requests = AttendanceRequest::with(['user', 'actionBy'])
-            ->when(! $isManager, function ($query) {
-                return $query->where('user_id', Auth::id());
-            })
-            ->when($isManager && ! empty($userIds), function ($query) use ($userIds) {
-                $ids = is_array($userIds) ? array_filter($userIds) : [$userIds];
-                if (! empty($ids)) {
-                    $query->whereIn('user_id', $ids);
-                }
-            })
-            ->when($status, function ($query) use ($status) {
-                return $query->where('status', $status);
-            })
-            ->when($type, function ($query) use ($type) {
-                return $query->where('type', $type);
-            })
-            ->when($search, function ($query) use ($search) {
-                return $query->whereHas('user', function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
-            })
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+        ->when(! $isManager, function ($query) {
+            return $query->where('user_id', Auth::id());
+        })
+        ->when($isManager && ! empty($userIds), function ($query) use ($userIds) {
+            $ids = is_array($userIds) ? array_filter($userIds) : [$userIds];
+            if (! empty($ids)) {
+                $query->whereIn('user_id', $ids);
+            }
+        })
+        ->when($status, function ($query) use ($status) {
+            return $query->where('status', $status);
+        })
+        ->when($type, function ($query) use ($type) {
+            return $query->where('type', $type);
+        })
+        ->when($search, function ($query) use ($search) {
+            return $query->whereHas('user', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+            });
+        })
+        ->latest()
+        ->paginate(15)
+        ->withQueryString();
 
         $allUsers = $isManager ? User::select('id', 'name', 'email')->orderBy('name')->get() : collect();
 
@@ -1161,12 +1310,12 @@ class AttendanceController extends Controller
         }
 
         $count = AttendanceRequest::whereIn('id', $ids)
-            ->where('status', 'Pending')
-            ->update([
-                'status' => $action,
-                'action_by' => Auth::id(),
-                'action_notes' => 'Bulk '.strtolower($action),
-            ]);
+        ->where('status', 'Pending')
+        ->update([
+            'status' => $action,
+            'action_by' => Auth::id(),
+            'action_notes' => 'Bulk '.strtolower($action),
+        ]);
 
         return back()->with('success', "{$count} request(s) {$action} successfully.");
     }
