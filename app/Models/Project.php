@@ -15,12 +15,18 @@ class Project extends Model
         'start_date',
         'deadline',
         'user_id',
+        'client_id',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'deadline' => 'date',
     ];
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
 
     public function user()
     {

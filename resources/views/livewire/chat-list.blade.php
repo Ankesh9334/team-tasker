@@ -388,7 +388,13 @@ new class extends Component {
 
         $user->conversations()
             ->updateExistingPivot($conversationId, ['last_read_at' => now()]);
-    } // Listen for the event dispatched by layout
+    }
+
+    #[On('conversationSelected')]
+    public function handleConversationSelected($conversationId)
+    {
+        $this->selectedConversationId = $conversationId;
+    }
 
     #[On('groupCreated')]
     #[On('messageReceived')]
@@ -404,7 +410,7 @@ new class extends Component {
 <?php
 $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::id();
 ?>
-<div class="d-flex flex-column h-100" style="background: var(--bg-surface);" x-data="{
+<div class="d-flex flex-column h-100" style="background: var(--bg-surface);" wire:poll.30s x-data="{
     openClientGroups: true,
     openClientMessages: true,
     openDirectMessages: true,
@@ -480,7 +486,49 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
             window.socket.emit('update_status', { userId: myId, status: status });
         }
     },
-    getStatusBadge(userId) {
+    formatWhatsApp(isoDate, isOnline) {
+        if (isOnline) return 'Online';
+        if (!isoDate) return 'last seen recently';
+        const date = new Date(isoDate);
+        if (isNaN(date.getTime())) return 'last seen recently';
+        const now = new Date();
+        const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+        if (diffSec >= 0 && diffSec < 120) {
+            return 'Online';
+        }
+        const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+        const isToday = date.toDateString() === now.toDateString();
+        if (isToday) {
+            return `last seen today at ${timeStr}`;
+        }
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const isYesterday = date.toDateString() === yesterday.toDateString();
+        if (isYesterday) {
+            return `last seen yesterday at ${timeStr}`;
+        }
+        const isSameYear = date.getFullYear() === now.getFullYear();
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        if (isSameYear) {
+            return `last seen ${date.getDate()} ${monthNames[date.getMonth()]} at ${timeStr}`;
+        }
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        return `last seen ${day}/${month}/${date.getFullYear()} at ${timeStr}`;
+    },
+    getLastSeenText(userId, lastSeenIso) {
+        const uId = Number(userId);
+        const myId = Number({{ $authId ?? 0 }});
+        if (uId === myId) return 'Online';
+
+        const badge = this.getStatusBadge(userId, lastSeenIso);
+        if (badge.label === 'Online') return 'Online';
+        if (badge.label === 'Away') return 'Away';
+        if (badge.label === 'Busy') return 'Busy';
+
+        return this.formatWhatsApp(lastSeenIso, false);
+    },
+    getStatusBadge(userId, lastSeenIso) {
         const uId = Number(userId);
         const myId = Number({{ $authId ?? 0 }});
         
@@ -497,6 +545,13 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
         const isUserOnlineInSocket = (this.onlineUsers || []).map(Number).includes(uId);
         if (isUserOnlineInSocket || uId === myId) {
             return { color: '#00a884', label: 'Online', dot: '🟢' };
+        }
+
+        if (lastSeenIso) {
+            const date = new Date(lastSeenIso);
+            if (!isNaN(date.getTime()) && Math.floor((new Date() - date) / 1000) < 120) {
+                return { color: '#00a884', label: 'Online', dot: '🟢' };
+            }
         }
 
         return { color: '#6b7280', label: 'Offline', dot: '⚫' };
@@ -620,7 +675,8 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
                                 </div>
                                 <!-- Online Status Dot -->
                                 <span class="position-absolute bottom-0 end-0 p-1 rounded-circle border border-1 border-dark"
-                                    :style="'width: 12px; height: 12px; background-color: ' + getStatusBadge('{{ $client->id }}').color"></span>
+                                    :style="'width: 12px; height: 12px; background-color: ' + getStatusBadge('{{ $client->id }}', '{{ ($client->last_seen_at ?? $client->updated_at)?->toIso8601String() }}').color"
+                                    :title="getLastSeenText('{{ $client->id }}', '{{ ($client->last_seen_at ?? $client->updated_at)?->toIso8601String() }}')"></span>
                             </div>
                             <div class="ms-3 flex-grow-1 overflow-hidden">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -632,8 +688,25 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
                                             style="background: var(--primary); color: white; font-size: 0.65rem;">{{ $client->conversation->unread_count }}</span>
                                     @endif
                                 </div>
-                                <div class="text-truncate d-block" style="color: var(--text-low); font-size: 0.75rem;">
-                                    {{ $client->company ?? 'Client' }}
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="text-truncate d-block" style="color: var(--text-low); font-size: 0.75rem;">
+                                        @if ($client->conversation && $client->conversation->latestMessage)
+                                            @php
+                                                $cleanBody = trim(html_entity_decode(strip_tags($client->conversation->latestMessage->body)));
+                                                if (empty($cleanBody) && $client->conversation->latestMessage->attachments?->isNotEmpty()) {
+                                                    $cleanBody = '📎 Attachment';
+                                                }
+                                            @endphp
+                                            {{ $cleanBody ?: 'Message' }}
+                                        @else
+                                            <span x-text="getLastSeenText('{{ $client->id }}', '{{ ($client->last_seen_at ?? $client->updated_at)?->toIso8601String() }}')"></span>
+                                        @endif
+                                    </div>
+                                    @if ($client->conversation && $client->conversation->latestMessage)
+                                        <small class="text-low flex-shrink-0 ms-1" style="font-size: 0.65rem;">
+                                            {{ $client->conversation->latestMessage->created_at->format('h:i A') }}
+                                        </small>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -667,7 +740,8 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
                         </div>
                         <!-- Online Status Dot -->
                         <span class="position-absolute bottom-0 end-0 p-1 rounded-circle border border-1 border-dark"
-                            :style="'width: 12px; height: 12px; background-color: ' + getStatusBadge('{{ $user->id }}').color"></span>
+                            :style="'width: 12px; height: 12px; background-color: ' + getStatusBadge('{{ $user->id }}', '{{ ($user->last_seen_at ?? $user->updated_at)?->toIso8601String() }}').color"
+                            :title="getLastSeenText('{{ $user->id }}', '{{ ($user->last_seen_at ?? $user->updated_at)?->toIso8601String() }}')"></span>
                     </div>
                     <div class="ms-3 flex-grow-1 overflow-hidden">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -679,8 +753,25 @@ $authId = Auth::guard('client')->check() ? Auth::guard('client')->id() : Auth::i
                                     style="background: var(--primary); color: white; font-size: 0.65rem;">{{ $user->conversation->unread_count }}</span>
                             @endif
                         </div>
-                        <div class="text-truncate d-block" style="color: var(--text-low); font-size: 0.75rem;">
-                            {{ $user->email }}
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-truncate d-block" style="color: var(--text-low); font-size: 0.75rem;">
+                                @if ($user->conversation && $user->conversation->latestMessage)
+                                    @php
+                                        $cleanBody = trim(html_entity_decode(strip_tags($user->conversation->latestMessage->body)));
+                                        if (empty($cleanBody) && $user->conversation->latestMessage->attachments?->isNotEmpty()) {
+                                            $cleanBody = '📎 Attachment';
+                                        }
+                                    @endphp
+                                    {{ $cleanBody ?: 'Message' }}
+                                @else
+                                    <span x-text="getLastSeenText('{{ $user->id }}', '{{ ($user->last_seen_at ?? $user->updated_at)?->toIso8601String() }}')"></span>
+                                @endif
+                            </div>
+                            @if ($user->conversation && $user->conversation->latestMessage)
+                                <small class="text-low flex-shrink-0 ms-1" style="font-size: 0.65rem;">
+                                    {{ $user->conversation->latestMessage->created_at->format('h:i A') }}
+                                </small>
+                            @endif
                         </div>
                     </div>
                 </div>

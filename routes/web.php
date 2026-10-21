@@ -269,6 +269,10 @@ Route::middleware(['web', 'auth:client,admin'])->controller(ClientController::cl
     Route::get('/tasks/{id}', 'showTask')->name('client.tasks.show');
     Route::post('/tasks/{id}/reply', 'replyTask')->name('client.tasks.reply');
 
+    // Client Projects
+    Route::get('/projects', [\App\Http\Controllers\ClientProjectController::class, 'index'])->name('client.projects.index');
+    Route::get('/projects/{id}', [\App\Http\Controllers\ClientProjectController::class, 'show'])->name('client.projects.show');
+
     // Client Chat
     Route::get('/chat', function () {
         return view('client.chat.index');

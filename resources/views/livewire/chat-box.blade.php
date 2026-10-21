@@ -758,6 +758,98 @@ new class extends Component {
         }
     }
 
+    public function updateHeartbeat()
+    {
+        $isClientGuard = Auth::guard('client')->check();
+        $user = $isClientGuard ? Auth::guard('client')->user() : Auth::user();
+        if ($user) {
+            $table = $isClientGuard ? 'clients' : 'users';
+            \Illuminate\Support\Facades\DB::table($table)->where('id', $user->id)->update([
+                'last_seen_at' => now(),
+            ]);
+        }
+
+        if ($this->conversation && $this->conversation->type === 'private' && $this->receiver) {
+            $isReceiverClient = $this->receiver->is_client ?? false;
+            $table = $isReceiverClient ? 'clients' : 'users';
+            $freshLastSeen = \Illuminate\Support\Facades\DB::table($table)->where('id', $this->receiver->id)->value('last_seen_at');
+            if ($freshLastSeen) {
+                $this->receiver->last_seen_at = \Carbon\Carbon::parse($freshLastSeen);
+            }
+        }
+    }
+
+    public function openDirectChatWith($userId, $isClient = false)
+    {
+        $this->showGroupInfo = false;
+        $isClientGuard = Auth::guard('client')->check();
+        $myId = $isClientGuard ? Auth::guard('client')->id() : Auth::id();
+
+        $isSelfChat = ($userId == $myId && $isClientGuard == $isClient);
+
+        if ($isSelfChat) {
+            $conversation = Conversation::where('type', 'private')
+                ->whereHas($isClientGuard ? 'clientParticipants' : 'participants', function ($q) use ($myId, $isClientGuard) {
+                    if ($isClientGuard) {
+                        $q->where('conversation_participants.client_id', $myId);
+                    } else {
+                        $q->where('conversation_participants.user_id', $myId);
+                    }
+                })
+                ->get()
+                ->first(function ($c) {
+                    return ($c->participants->count() + $c->clientParticipants->count()) === 1;
+                });
+
+            if (!$conversation) {
+                $conversation = Conversation::create(['type' => 'private']);
+                if ($isClientGuard) {
+                    $conversation->participants()->attach([$myId], ['client_id' => $myId, 'user_id' => null]);
+                } else {
+                    $conversation->participants()->attach([$myId], ['user_id' => $myId, 'client_id' => null]);
+                }
+            }
+        } else {
+            $conversation = Conversation::where('type', 'private')
+                ->whereHas($isClientGuard ? 'clientParticipants' : 'participants', function ($q) use ($myId, $isClientGuard) {
+                    if ($isClientGuard) {
+                        $q->where('conversation_participants.client_id', $myId);
+                    } else {
+                        $q->where('conversation_participants.user_id', $myId);
+                    }
+                })
+                ->whereHas($isClient ? 'clientParticipants' : 'participants', function ($q) use ($userId, $isClient) {
+                    if ($isClient) {
+                        $q->where('conversation_participants.client_id', $userId);
+                    } else {
+                        $q->where('conversation_participants.user_id', $userId);
+                    }
+                })
+                ->get()
+                ->first(function ($c) {
+                    return ($c->participants->count() + $c->clientParticipants->count()) > 1;
+                });
+
+            if (!$conversation) {
+                $conversation = Conversation::create(['type' => 'private']);
+                if ($isClientGuard) {
+                    $conversation->participants()->attach([$myId], ['client_id' => $myId, 'user_id' => null]);
+                } else {
+                    $conversation->participants()->attach([$myId], ['user_id' => $myId, 'client_id' => null]);
+                }
+                if ($isClient) {
+                    $conversation->participants()->attach([$userId], ['client_id' => $userId, 'user_id' => null]);
+                } else {
+                    $conversation->participants()->attach([$userId], ['user_id' => $userId, 'client_id' => null]);
+                }
+            }
+        }
+
+        $this->selectedConversationId = $conversation->id;
+        $this->loadConversation($conversation->id);
+        $this->dispatch('conversationSelected', conversationId: $conversation->id);
+    }
+
     public function closeChat()
     {
         $this->conversation = null;
@@ -788,12 +880,24 @@ new class extends Component {
     }
 }; ?>
 
-<div class="d-flex flex-column h-100 w-100 flex-grow-1 position-relative">
+<div class="d-flex flex-column h-100 w-100 flex-grow-1 position-relative" wire:poll.30s="updateHeartbeat">
     @php
         $isClientGuard = \Illuminate\Support\Facades\Auth::guard('client')->check();
         $authUser = $isClientGuard ? \Illuminate\Support\Facades\Auth::guard('client')->user() : auth()->user();
         $authId = $authUser?->id;
         $authName = $authUser?->name ?? 'User';
+
+        $otherParticipant = null;
+        if ($conversation && $conversation->type === 'private') {
+            $otherParticipant = $receiver ?? ($conversation->participants->first(function($p) use ($authId, $isClientGuard) {
+                return !(!$isClientGuard && $p->id == $authId);
+            }) ?? $conversation->clientParticipants->first(function($cp) use ($authId, $isClientGuard) {
+                return !($isClientGuard && $cp->id == $authId);
+            }) ?? $conversation->participants->first() ?? $conversation->clientParticipants->first());
+        }
+        $targetLastSeen = $otherParticipant?->last_seen_at ?? $otherParticipant?->updated_at;
+        $targetLastSeenIso = $targetLastSeen ? $targetLastSeen->toIso8601String() : '';
+        $initialStatusText = $otherParticipant ? \App\Helpers\ChatPresenceHelper::formatLastSeen($targetLastSeen) : 'last seen recently';
     @endphp
     <input type="hidden" id="active-conversation-id" value="{{ $conversation ? $conversation->id : '' }}">
     @if ($conversation)
@@ -803,40 +907,76 @@ new class extends Component {
             <div class="p-3 border-bottom border-main d-flex justify-content-between align-items-center"
                 wire:key="chat-header-{{ $conversation->id }}" style="min-height: 73px; background: var(--bg-surface);"
                 x-data="{
-                    status: 'Offline',
-                    statusText: 'Offline',
-                    statusColor: '#6b7280',
+                    status: '{{ $initialStatusText }}',
+                    statusText: '{{ addslashes($initialStatusText) }}',
+                    statusColor: '{{ $initialStatusText === 'Online' ? '#00a884' : 'var(--text-low)' }}',
+                    lastSeenAt: '{{ $targetLastSeenIso }}',
                     isTyping: false,
                     typingUser: '',
                     typingTimeout: null,
-                    userId: {{ $conversation->type == 'private' && $receiver ? $receiver->id : 'null' }},
+                    tickerInterval: null,
+                    userId: {{ $conversation->type == 'private' && $otherParticipant ? $otherParticipant->id : 'null' }},
                     conversationId: '{{ $conversation->id }}',
                     currentUserId: {{ $authId ?? 'null' }},
+                    isSelf: {{ ($otherParticipant && $otherParticipant->id == $authId) ? 'true' : 'false' }},
+
+                    formatWhatsApp(isoDate, isOnline) {
+                        if (isOnline) return 'Online';
+                        if (!isoDate) return 'last seen recently';
+                        const date = new Date(isoDate);
+                        if (isNaN(date.getTime())) return 'last seen recently';
+                        const now = new Date();
+                        const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+                        if (diffSec >= 0 && diffSec < 120) {
+                            return 'Online';
+                        }
+                        const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                        const isToday = date.toDateString() === now.toDateString();
+                        if (isToday) {
+                            return `last seen today at ${timeStr}`;
+                        }
+                        const yesterday = new Date(now);
+                        yesterday.setDate(now.getDate() - 1);
+                        const isYesterday = date.toDateString() === yesterday.toDateString();
+                        if (isYesterday) {
+                            return `last seen yesterday at ${timeStr}`;
+                        }
+                        const isSameYear = date.getFullYear() === now.getFullYear();
+                        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        if (isSameYear) {
+                            return `last seen ${date.getDate()} ${monthNames[date.getMonth()]} at ${timeStr}`;
+                        }
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        return `last seen ${day}/${month}/${date.getFullYear()} at ${timeStr}`;
+                    },
+
                     updatePresence(users, statuses) {
                         if (!this.userId) return;
+                        if (this.isSelf) {
+                            this.statusText = 'Message yourself';
+                            this.statusColor = 'var(--text-low)';
+                            return;
+                        }
                         const normStatuses = statuses || window.userStatuses || {};
                         const st = normStatuses[this.userId] || normStatuses[String(this.userId)];
                         const normUsers = (users || window.onlineUsers || []).map(Number);
                         const targetId = Number(this.userId);
-                        
+                        const isOnlineInSocket = normUsers.includes(targetId);
+
                         if (st === 'away') { 
                             this.statusText = 'Away'; 
                             this.statusColor = '#f59e0b'; 
                         } else if (st === 'busy') { 
                             this.statusText = 'Busy'; 
                             this.statusColor = '#ea4335'; 
-                        } else if (st === 'offline') { 
-                            this.statusText = 'Offline'; 
-                            this.statusColor = '#6b7280'; 
-                        } else if (st === 'online') { 
+                        } else if (st === 'online' || isOnlineInSocket) { 
                             this.statusText = 'Online'; 
-                            this.statusColor = '#00a884';
-                        } else if (normUsers.includes(targetId)) {
-                            this.statusText = 'Online'; 
-                            this.statusColor = '#00a884';
+                            this.statusColor = '#00a884'; 
                         } else {
-                            this.statusText = 'Offline'; 
-                            this.statusColor = '#6b7280';
+                            const formatted = this.formatWhatsApp(this.lastSeenAt, false);
+                            this.statusText = formatted;
+                            this.statusColor = (formatted === 'Online') ? '#00a884' : 'var(--text-low)';
                         }
                     },
                     init() {
@@ -850,29 +990,43 @@ new class extends Component {
                                 this.updatePresence(window.onlineUsers || [], e.detail || {});
                             });
                             window.addEventListener('user-status-changed-event', (e) => {
+                                if (e.detail && Number(e.detail.userId) === Number(this.userId)) {
+                                    if (e.detail.status === 'offline') {
+                                        this.lastSeenAt = new Date().toISOString();
+                                    }
+                                }
                                 this.updatePresence(window.onlineUsers || [], window.userStatuses || {});
                             });
+
+                            if (this.tickerInterval) clearInterval(this.tickerInterval);
+                            this.tickerInterval = setInterval(() => {
+                                if (this.statusText !== 'Online' && !this.isSelf && this.statusText !== 'Away' && this.statusText !== 'Busy') {
+                                    const formatted = this.formatWhatsApp(this.lastSeenAt, false);
+                                    this.statusText = formatted;
+                                    this.statusColor = (formatted === 'Online') ? '#00a884' : 'var(--text-low)';
+                                }
+                            }, 30000);
                         }
-                
+
                         window.addEventListener('user-typing-indicator', (event) => {
                             const roomMatch = String(event.detail.room) === String(this.conversationId);
                             const isNotMe = String(event.detail.userId) !== String(this.currentUserId);
-                
+
                             if (roomMatch && isNotMe) {
                                 this.isTyping = true;
                                 this.typingUser = event.detail.userName;
-                
+
                                 if (this.typingTimeout) clearTimeout(this.typingTimeout);
                                 this.typingTimeout = setTimeout(() => {
                                     this.isTyping = false;
                                 }, 3000);
                             }
                         });
-                
+
                         window.addEventListener('user-stop-typing-indicator', (event) => {
                             const roomMatch = String(event.detail.room) === String(this.conversationId);
                             const isNotMe = String(event.detail.userId) !== String(this.currentUserId);
-                
+
                             if (roomMatch && isNotMe) {
                                 this.isTyping = false;
                             }
@@ -906,27 +1060,6 @@ new class extends Component {
                                 x-text="typingUser + ' is typing...'"></small>
                         </div>
                     @else
-                        @php
-                            $isClientGuard = Auth::guard('client')->check();
-                            $myId = $isClientGuard ? Auth::guard('client')->id() : Auth::id();
-                            
-                            // Look for other staff participant
-                            $otherParticipant = $conversation->participants->first(function($p) use ($myId, $isClientGuard) {
-                                return !(!$isClientGuard && $p->id == $myId);
-                            });
-                            
-                            // If no other staff participant found, look for client participant
-                            if (!$otherParticipant) {
-                                $otherParticipant = $conversation->clientParticipants->first(function($cp) use ($myId, $isClientGuard) {
-                                    return !($isClientGuard && $cp->id == $myId);
-                                });
-                            }
-
-                            // If still null (self-message scenario), use the logged-in user themselves
-                            if (!$otherParticipant) {
-                                $otherParticipant = $conversation->participants->first() ?? $conversation->clientParticipants->first();
-                            }
-                        @endphp
                         @if ($otherParticipant)
                             <div class="d-flex align-items-center">
                                 <div class="avatar-premium" style="width: 45px; height: 45px;">
@@ -939,11 +1072,11 @@ new class extends Component {
                                 </div>
                                 <div class="ms-3">
                                     <h6 class="mb-0 fw-bold" style="color: var(--text-high);">
-                                        {{ $otherParticipant->name ?? 'User' }} {{ $otherParticipant->id == $myId ? '(You)' : '' }}</h6>
-                                    <div class="d-flex align-items-center gap-1">
-                                        <span class="rounded-circle" x-show="!isTyping"
-                                            :style="'width: 8px; height: 8px; background-color: ' + statusColor"></span>
-                                        <small x-show="!isTyping" :style="'font-size: 0.7rem; color: ' + statusColor" x-text="statusText"></small>
+                                        {{ $otherParticipant->name ?? 'User' }} {{ $otherParticipant->id == $authId ? '(You)' : '' }}</h6>
+                                    <div class="d-flex align-items-center gap-1" style="min-height: 18px;">
+                                        <span class="rounded-circle" x-show="!isTyping && (statusText === 'Online' || statusText === 'Away' || statusText === 'Busy')"
+                                            :style="'width: 8px; height: 8px; background-color: ' + statusColor + '; flex-shrink: 0;'"></span>
+                                        <small x-show="!isTyping" :style="'font-size: 0.72rem; color: ' + statusColor" x-text="statusText"></small>
 
                                         <small x-show="isTyping" class="text-primary fw-bold"
                                             style="font-size: 0.75rem; font-style: italic;"
@@ -1532,6 +1665,11 @@ new class extends Component {
             </div>
 
             <div class="flex-grow-1 overflow-auto p-4">
+                @php
+                    $staffList = $conversation->participants ?? collect();
+                    $clientList = $conversation->clientParticipants ?? collect();
+                    $totalMembers = $staffList->count() + $clientList->count();
+                @endphp
                 <div class="text-center mb-4">
                     <div class="avatar-premium mx-auto mb-3"
                         style="width: 80px; height: 80px; background: var(--bg-input);">
@@ -1540,30 +1678,83 @@ new class extends Component {
                     <h5 class="fw-bold mb-1" style="color: var(--text-high);">{{ $conversation->name }}</h5>
                     <span class="badge-premium"
                         style="background: rgba(var(--primary-rgb), 0.1); color: var(--primary); border-color: rgba(var(--primary-rgb), 0.2);">
-                        {{ $conversation->participants->count() }} Members
+                        {{ $totalMembers }} Members
                     </span>
                 </div>
 
-                <div class="heading-label mb-3" style="font-size: 0.7rem;">Participants</div>
-                <div class="d-flex flex-column gap-3">
-                    @foreach ($conversation->participants as $participant)
-                        <div class="d-flex align-items-center p-2 rounded-premium transition-base hover-bg-input">
-                            <div class="avatar-premium flex-shrink-0" style="width: 38px; height: 38px;">
-                                @if ($participant->profile_image)
-                                    <img alt="team-tasker" src="{{ asset('storage/' . $participant->profile_image) }}" alt="Avatar">
-                                @else
-                                    {{ substr($participant->name, 0, 1) }}
-                                @endif
-                            </div>
-                            <div class="ms-3 overflow-hidden">
-                                <div class="fw-bold text-truncate"
-                                    style="color: var(--text-high); font-size: 0.85rem;">
-                                    {{ $participant->name }}
+                <div class="heading-label mb-2 d-flex justify-content-between align-items-center" style="font-size: 0.7rem;">
+                    <span>Participants ({{ $totalMembers }})</span>
+                    <span style="font-size: 0.65rem; color: var(--text-low); text-transform: none;">Click to chat</span>
+                </div>
+                <div class="d-flex flex-column gap-2">
+                    @foreach ($staffList as $participant)
+                        @php
+                            $isMe = (!$isClientGuard && $participant->id == $authId);
+                        @endphp
+                        <div class="d-flex align-items-center justify-content-between p-2 rounded-premium transition-base hover-bg-input cursor-pointer"
+                            wire:click="openDirectChatWith({{ $participant->id }}, false)"
+                            style="cursor: pointer;"
+                            title="{{ $isMe ? 'Message yourself' : 'Send direct chat to ' . $participant->name }}">
+                            <div class="d-flex align-items-center overflow-hidden">
+                                <div class="avatar-premium flex-shrink-0" style="width: 38px; height: 38px;">
+                                    @if ($participant->profile_image)
+                                        <img alt="team-tasker" src="{{ asset('storage/' . $participant->profile_image) }}" alt="Avatar">
+                                    @else
+                                        {{ substr($participant->name, 0, 1) }}
+                                    @endif
                                 </div>
-                                <div class="text-truncate" style="color: var(--text-low); font-size: 0.75rem;">
-                                    {{ $participant->email }}
+                                <div class="ms-3 overflow-hidden">
+                                    <div class="fw-bold text-truncate d-flex align-items-center gap-1"
+                                        style="color: var(--text-high); font-size: 0.85rem;">
+                                        <span>{{ $participant->name }}</span>
+                                        @if ($isMe)
+                                            <span class="badge bg-secondary-subtle text-secondary py-0 px-1" style="font-size: 0.65rem;">You</span>
+                                        @endif
+                                    </div>
+                                    <div class="text-truncate" style="color: var(--text-low); font-size: 0.72rem;">
+                                        {{ \App\Helpers\ChatPresenceHelper::formatLastSeen($participant->last_seen_at ?? $participant->updated_at) }}
+                                    </div>
                                 </div>
                             </div>
+                            <button class="btn btn-sm btn-link p-1 text-primary opacity-75 hover-opacity-100" style="border: none;" title="Send direct chat">
+                                <i class="fas fa-comment-dots" style="font-size: 0.95rem;"></i>
+                            </button>
+                        </div>
+                    @endforeach
+
+                    @foreach ($clientList as $participant)
+                        @php
+                            $isMe = ($isClientGuard && $participant->id == $authId);
+                        @endphp
+                        <div class="d-flex align-items-center justify-content-between p-2 rounded-premium transition-base hover-bg-input cursor-pointer"
+                            wire:click="openDirectChatWith({{ $participant->id }}, true)"
+                            style="cursor: pointer;"
+                            title="{{ $isMe ? 'Message yourself' : 'Send direct chat to ' . $participant->name }}">
+                            <div class="d-flex align-items-center overflow-hidden">
+                                <div class="avatar-premium flex-shrink-0" style="width: 38px; height: 38px;">
+                                    @if ($participant->profile_image)
+                                        <img alt="team-tasker" src="{{ asset('storage/' . $participant->profile_image) }}" alt="Avatar">
+                                    @else
+                                        {{ substr($participant->name, 0, 1) }}
+                                    @endif
+                                </div>
+                                <div class="ms-3 overflow-hidden">
+                                    <div class="fw-bold text-truncate d-flex align-items-center gap-1"
+                                        style="color: var(--text-high); font-size: 0.85rem;">
+                                        <span>{{ $participant->name }}</span>
+                                        <span class="badge bg-info-subtle text-info py-0 px-1" style="font-size: 0.65rem;">Client</span>
+                                        @if ($isMe)
+                                            <span class="badge bg-secondary-subtle text-secondary py-0 px-1" style="font-size: 0.65rem;">You</span>
+                                        @endif
+                                    </div>
+                                    <div class="text-truncate" style="color: var(--text-low); font-size: 0.72rem;">
+                                        {{ \App\Helpers\ChatPresenceHelper::formatLastSeen($participant->last_seen_at ?? $participant->updated_at) }}
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-link p-1 text-primary opacity-75 hover-opacity-100" style="border: none;" title="Send direct chat">
+                                <i class="fas fa-comment-dots" style="font-size: 0.95rem;"></i>
+                            </button>
                         </div>
                     @endforeach
                 </div>
