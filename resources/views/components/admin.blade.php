@@ -1268,7 +1268,7 @@ class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.clients.em
 
 @if (Auth::user()->hasPermission('attendance.view') || Auth::user()->hasPermission('attendance.punch') || Auth::user()->hasPermission('attendance.daily') || Auth::user()->hasPermission('attendance.monthly') || Auth::user()->hasPermission('attendance.dashboard_overview') || Auth::user()->hasPermission('attendance.settings'))
 @php
-$isAttendanceActive = request()->routeIs('admin.attendance.*');
+$isAttendanceActive = request()->routeIs('admin.attendance.*', 'admin.payroll.*');
 @endphp
 <div class="nav-item">
     <a href="javascript:void(0)"
@@ -1311,7 +1311,8 @@ class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.attendance
 </a>
 @endif
 
-{{-- Payroll Menu --}}
+
+{{-- Payroll Management Menu --}}
 @if(
 Auth::user()->hasRole('super-admin') ||
 Auth::user()->hasPermission('payroll.view') ||
@@ -1319,21 +1320,25 @@ Auth::user()->hasPermission('payroll.salary_view') ||
 Auth::user()->hasPermission('payroll.generate')
 )
 <a href="{{ route('admin.payroll.index') }}"
-class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.payroll.*') ? 'active' : '' }}">
-<i class="fas fa-money-check-dollar"></i> Payroll Management
+class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.payroll.*') && !request()->routeIs('admin.payroll.salaries*') ? 'active' : '' }}">
+<i class="fas fa-money-check-dollar"></i>
+<span>Payroll Management</span>
 </a>
 @endif
 
+{{-- Employee Salaries Menu --}}
 @if(
 Auth::user()->hasRole('super-admin') ||
 Auth::user()->hasPermission('payroll.salary_view') ||
 Auth::user()->hasPermission('payroll.salary_manage')
 )
 <a href="{{ route('admin.payroll.salaries') }}"
-class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.payroll.salaries') ? 'active' : '' }}">
-<i class="fas fa-money-bill-wave"></i> Employee Salaries
+class="nav-link-premium sub-link-premium {{ request()->routeIs('admin.payroll.salaries*') ? 'active' : '' }}">
+<i class="fas fa-money-bill-wave"></i>
+<span>Employee Salaries</span>
 </a>
 @endif
+
 
 
 <!-- @if (Auth::user()->hasRole('super-admin'))
