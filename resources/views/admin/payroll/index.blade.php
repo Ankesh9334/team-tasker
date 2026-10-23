@@ -417,22 +417,22 @@ $employees = $employees ?? collect();
             <div class="d-flex flex-wrap align-items-center gap-2">
                 <div class="month-nav">
                     <a href="{{ request()->fullUrlWithQuery(['month' => $prevMonth, 'page' => null]) }}"
-                     title="Previous month" aria-label="Previous month">&lsaquo;</a>
-                     <span>{{ $monthDate->format('F Y') }}</span>
-                     <a href="{{ request()->fullUrlWithQuery(['month' => $nextMonth, 'page' => null]) }}"
-                         title="Next month" aria-label="Next month">&rsaquo;</a>
-                     </div>
+                       title="Previous month" aria-label="Previous month">&lsaquo;</a>
+                       <span>{{ $monthDate->format('F Y') }}</span>
+                       <a href="{{ request()->fullUrlWithQuery(['month' => $nextMonth, 'page' => null]) }}"
+                           title="Next month" aria-label="Next month">&rsaquo;</a>
+                       </div>
 
-                     <a href="{{ route('admin.payroll.salaries') }}"
-                     class="btn-premium btn-premium-secondary px-3 py-2">
-                     <i class="fas fa-users me-1"></i> Manage Salaries
-                 </a>
-             </div>
-         </div>
+                       <a href="{{ route('admin.payroll.salaries') }}"
+                       class="btn-premium btn-premium-secondary px-3 py-2">
+                       <i class="fas fa-users me-1"></i> Manage Salaries
+                   </a>
+               </div>
+           </div>
 
-         {{-- Alerts --}}
-         @if(session('success'))
-         <div class="alert alert-success py-2 px-3 auto-dismiss">
+           {{-- Alerts --}}
+           @if(session('success'))
+           <div class="alert alert-success py-2 px-3 auto-dismiss">
             {{ session('success') }}
         </div>
         @endif
@@ -535,13 +535,10 @@ $employees = $employees ?? collect();
                     <label for="user_id" class="form-label">Employee</label>
 
                     @if($employees->isNotEmpty())
-                    <select name="user_id" id="user_id" class="form-select" required>
-                        <option value="">Select employee...</option>
-                        @foreach($employees as $emp)
-                        <option value="{{ $emp->id }}"
-                            @selected(old('user_id') == $emp->id)>
-                            {{ $emp->name }} ({{ $emp->email }})
-                        </option>
+                    <select name="gender" class="form-premium-control">
+                        <option value="">Select</option>
+                        @foreach (['male' => 'Male', 'female' => 'Female', 'other' => 'Other'] as $k => $label)
+                        <option value="{{ $k }}" @selected($val('gender') === $k)>{{ $label }}</option>
                         @endforeach
                     </select>
                     @else
@@ -660,9 +657,9 @@ id="filterForm">
     </button>
 
     <a href="{{ route('admin.payroll.index', ['month' => $month]) }}"
-     class="btn-premium btn-premium-secondary px-3 py-2">
-     Reset
- </a>
+       class="btn-premium btn-premium-secondary px-3 py-2">
+       Reset
+   </a>
 </div>
 </div>
 </form>
@@ -765,36 +762,36 @@ id="filterForm">
 <td class="text-end text-nowrap">
     <div class="pr-actions">
         <a href="{{ route('admin.payroll.show', $payroll->id) }}"
-         class="pr-action-link"
-         title="View payroll">
-         <i class="fas fa-eye me-1"></i> View
-     </a>
+           class="pr-action-link"
+           title="View payroll">
+           <i class="fas fa-eye me-1"></i> View
+       </a>
 
-     @if($hasPayslip && in_array($payroll->status, ['approved', 'paid'], true))
-     <a href="{{ route('admin.payroll.payslip', $payroll->id) }}"
-         target="_blank"
-         rel="noopener"
-         class="pr-action-link"
-         title="View payslip">
-         <i class="fas fa-file-invoice me-1"></i> Payslip
-     </a>
-     @endif
+       @if($hasPayslip && in_array($payroll->status, ['approved', 'paid'], true))
+       <a href="{{ route('admin.payroll.payslip', $payroll->id) }}"
+           target="_blank"
+           rel="noopener"
+           class="pr-action-link"
+           title="View payslip">
+           <i class="fas fa-file-invoice me-1"></i> Payslip
+       </a>
+       @endif
 
-     @if($hasDelete && in_array($payroll->status, ['draft', 'rejected'], true))
-     <form action="{{ route('admin.payroll.destroy', $payroll->id) }}"
-      method="POST"
-      class="d-inline"
-      onsubmit="return confirm('Delete this {{ $payroll->status }} payroll?')">
-      @csrf
-      @method('DELETE')
+       @if($hasDelete && in_array($payroll->status, ['draft', 'rejected'], true))
+       <form action="{{ route('admin.payroll.destroy', $payroll->id) }}"
+          method="POST"
+          class="d-inline"
+          onsubmit="return confirm('Delete this {{ $payroll->status }} payroll?')">
+          @csrf
+          @method('DELETE')
 
-      <button type="submit"
-      class="pr-action-link"
-      title="Delete payroll">
-      <i class="fas fa-trash"></i>
-  </button>
-</form>
-@endif
+          <button type="submit"
+          class="pr-action-link"
+          title="Delete payroll">
+          <i class="fas fa-trash"></i>
+      </button>
+  </form>
+  @endif
 </div>
 </td>
 </tr>

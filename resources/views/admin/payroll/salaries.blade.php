@@ -873,149 +873,148 @@ body.dark .sal-page .page-item.active .page-link {
 
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label for="user_id" class="form-label">Employee</label>
-                    <select name="user_id" id="user_id" class="form-select" required>
-                        <option value="">Select employee</option>
+                    <label class="form-label">Employee</label>
+                    <x-select name="user_id" placeholder="Select employee" :selected="old('user_id')">
+                        <option value="" class="bg-dark">Select employee</option>
                         @foreach($users as $user)
-                        <option
-                        value="{{ $user->id }}"
-                        @selected(old('user_id') == $user->id)
-                        >
-                        {{ $user->name }} ({{ $user->email }})
-                    </option>
-                    @endforeach
-                </select>
-            </div>
+                        <option value="{{ $user->id }}"
+                            {{ old('user_id') == $user->id ? 'selected' : '' }}
+                            class="bg-dark">
+                            {{ $user->name }} ({{ $user->email }})
+                        </option>
+                        @endforeach
+                    </x-select>
+                </div>
 
-            <div class="col-md-6">
-                <label for="monthly_salary" class="form-label">Monthly salary (₹)</label>
-                <div class="input-group">
-                    <span class="input-group-text">₹</span>
+                <div class="col-md-6">
+                    <label for="monthly_salary" class="form-label">Monthly salary (₹)</label>
+                    <div class="input-group">
+                        <span class="input-group-text">₹</span>
+                        <input
+                        type="number"
+                        name="monthly_salary"
+                        id="monthly_salary"
+                        class="form-control"
+                        min="0.01"
+                        step="0.01"
+                        value="{{ old('monthly_salary') }}"
+                        placeholder="e.g. 25000"
+                        required
+                        >
+                    </div>
+                </div>
+
+                {{-- Working days --}}
+                <div class="col-12">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <label class="form-label mb-0">Scheduled working days</label>
+
+                        <div class="d-flex flex-wrap gap-1">
+                            <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5">
+                                Mon–Fri
+                            </button>
+                            <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5,6">
+                                Mon–Sat
+                            </button>
+                            <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5,6,7">
+                                All days
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach($weekdays as $n => $name)
+                        <span class="position-relative">
+                            <input
+                            type="checkbox"
+                            class="day-cb"
+                            id="wd{{ $n }}"
+                            name="working_days[]"
+                            value="{{ $n }}"
+                            @checked(in_array($n, $selectedDays, true))
+                            >
+                            <label for="wd{{ $n }}" class="day-chip">
+                                {{ $name }}
+                            </label>
+                        </span>
+                        @endforeach
+                    </div>
+
+                    <small class="d-block mt-2 sal-help">
+                        Selected days are used to calculate the daily rate. Unselected days are weekly offs.
+                    </small>
+                </div>
+
+                {{-- Effective dates --}}
+                <div class="col-md-6">
+                    <label for="effective_from" class="form-label">Effective from</label>
                     <input
-                    type="number"
-                    name="monthly_salary"
-                    id="monthly_salary"
+                    type="date"
+                    name="effective_from"
+                    id="effective_from"
                     class="form-control"
-                    min="0.01"
-                    step="0.01"
-                    value="{{ old('monthly_salary') }}"
-                    placeholder="e.g. 25000"
+                    value="{{ old('effective_from', now()->toDateString()) }}"
                     required
                     >
                 </div>
-            </div>
 
-            {{-- Working days --}}
-            <div class="col-12">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                    <label class="form-label mb-0">Scheduled working days</label>
+                <div class="col-md-6">
+                    <label for="effective_until" class="form-label">Effective until (optional)</label>
+                    <input
+                    type="date"
+                    name="effective_until"
+                    id="effective_until"
+                    class="form-control"
+                    value="{{ old('effective_until') }}"
+                    >
+                </div>
 
-                    <div class="d-flex flex-wrap gap-1">
-                        <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5">
-                            Mon–Fri
-                        </button>
-                        <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5,6">
-                            Mon–Sat
-                        </button>
-                        <button type="button" class="sal-btn sal-btn-soft" data-days="1,2,3,4,5,6,7">
-                            All days
-                        </button>
+                {{-- Salary preview --}}
+                <div class="col-12">
+                    <div class="sal-preview" id="preview">
+                        <span>
+                            <i class="fas fa-calendar-alt me-1"></i>
+                            <span id="pvMonth">-</span>
+                        </span>
+
+                        <span>Working days: <b id="pvDays">-</b></span>
+                        <span>Weekly off: <b id="pvOff">-</b></span>
+                        <span>Daily rate: <b id="pvRate">-</b></span>
                     </div>
+                    <small class="d-block mt-2 sal-help">
+                        Daily rate preview uses the working days in the month selected by Effective from.
+                    </small>
                 </div>
 
-                <div class="d-flex flex-wrap gap-2">
-                    @foreach($weekdays as $n => $name)
-                    <span class="position-relative">
-                        <input
-                        type="checkbox"
-                        class="day-cb"
-                        id="wd{{ $n }}"
-                        name="working_days[]"
-                        value="{{ $n }}"
-                        @checked(in_array($n, $selectedDays, true))
-                        >
-                        <label for="wd{{ $n }}" class="day-chip">
-                            {{ $name }}
-                        </label>
-                    </span>
-                    @endforeach
+                {{-- Notes --}}
+                <div class="col-12">
+                    <label for="notes" class="form-label">Notes (optional)</label>
+                    <textarea
+                    name="notes"
+                    id="notes"
+                    class="form-control"
+                    rows="2"
+                    placeholder="e.g. increment, probation completed, etc."
+                    >{{ old('notes') }}</textarea>
                 </div>
 
-                <small class="d-block mt-2 sal-help">
-                    Selected days are used to calculate the daily rate. Unselected days are weekly offs.
-                </small>
-            </div>
+                <div class="col-12">
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <button type="submit" class="sal-btn sal-btn-primary" id="saveBtn">
+                            <i class="fas fa-save"></i>
+                            Save salary
+                        </button>
 
-            {{-- Effective dates --}}
-            <div class="col-md-6">
-                <label for="effective_from" class="form-label">Effective from</label>
-                <input
-                type="date"
-                name="effective_from"
-                id="effective_from"
-                class="form-control"
-                value="{{ old('effective_from', now()->toDateString()) }}"
-                required
-                >
-            </div>
-
-            <div class="col-md-6">
-                <label for="effective_until" class="form-label">Effective until (optional)</label>
-                <input
-                type="date"
-                name="effective_until"
-                id="effective_until"
-                class="form-control"
-                value="{{ old('effective_until') }}"
-                >
-            </div>
-
-            {{-- Salary preview --}}
-            <div class="col-12">
-                <div class="sal-preview" id="preview">
-                    <span>
-                        <i class="fas fa-calendar-alt me-1"></i>
-                        <span id="pvMonth">-</span>
-                    </span>
-
-                    <span>Working days: <b id="pvDays">-</b></span>
-                    <span>Weekly off: <b id="pvOff">-</b></span>
-                    <span>Daily rate: <b id="pvRate">-</b></span>
-                </div>
-                <small class="d-block mt-2 sal-help">
-                    Daily rate preview uses the working days in the month selected by Effective from.
-                </small>
-            </div>
-
-            {{-- Notes --}}
-            <div class="col-12">
-                <label for="notes" class="form-label">Notes (optional)</label>
-                <textarea
-                name="notes"
-                id="notes"
-                class="form-control"
-                rows="2"
-                placeholder="e.g. increment, probation completed, etc."
-                >{{ old('notes') }}</textarea>
-            </div>
-
-            <div class="col-12">
-                <div class="d-flex flex-wrap align-items-center gap-3">
-                    <button type="submit" class="sal-btn sal-btn-primary" id="saveBtn">
-                        <i class="fas fa-save"></i>
-                        Save salary
-                    </button>
-
-                    <div class="sal-note">
-                        <i class="fas fa-info-circle me-1"></i>
-                        The employee's current active salary will be closed automatically on the day before
-                        “Effective from”.
+                        <div class="sal-note">
+                            <i class="fas fa-info-circle me-1"></i>
+                            The employee's current active salary will be closed automatically on the day before
+                            “Effective from”.
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </form>
-</div>
+        </form>
+    </div>
 </div>
 
 {{-- Employee salary records --}}
