@@ -4,6 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -30,6 +32,22 @@ class User extends Authenticatable
         'otp_expires_at',
         'email_verified_at',
         'last_seen_at',
+
+        // Employee details
+        'date_of_birth',
+        'gender',
+        'address',
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'employee_code',
+        'designation',
+        'department',
+        'joining_date',
+        'pan_number',
+        'aadhaar_number',
+        'bank_name',
+        'bank_account_number',
+        'bank_ifsc',
     ];
 
     /**
@@ -40,6 +58,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'aadhaar_number',
+        'bank_account_number',
     ];
 
     /**
@@ -51,11 +71,17 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'last_seen_at' => 'datetime',
         'password' => 'hashed',
+        'date_of_birth' => 'date',
+        'joining_date' => 'date',
+        'aadhaar_number' => 'encrypted',
+        'bank_account_number' => 'encrypted',
     ];
 
     public function getWhatsappStatusAttribute(): string
     {
-        return \App\Helpers\ChatPresenceHelper::formatLastSeen($this->last_seen_at);
+        return \App\Helpers\ChatPresenceHelper::formatLastSeen(
+            $this->last_seen_at
+        );
     }
 
     public function attendances()
@@ -85,14 +111,30 @@ class User extends Authenticatable
 
     public function conversations()
     {
-        return $this->belongsToMany(Conversation::class, 'conversation_participants')
-            ->withPivot('last_read_at')
-            ->withTimestamps();
+        return $this->belongsToMany(
+            Conversation::class,
+            'conversation_participants'
+        )
+        ->withPivot('last_read_at')
+        ->withTimestamps();
     }
 
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    // Salary relations
+    public function salaries(): HasMany
+    {
+        return $this->hasMany(EmployeeSalary::class);
+    }
+
+    public function currentSalary(): HasOne
+    {
+        return $this->hasOne(EmployeeSalary::class)
+        ->where('is_active', true)
+        ->latestOfMany('effective_from');
     }
 
     public function hasPermission($permission)
@@ -101,7 +143,7 @@ class User extends Authenticatable
             return false;
         }
 
-        // Super Admin Bypass
+        // Super Admin / Admin bypass
         if (in_array(strtolower($this->role->slug), ['super-admin', 'admin'])) {
             return true;
         }
@@ -121,8 +163,12 @@ class User extends Authenticatable
         }
 
         $permissions = $this->role->permissions ?? [];
+
         if (is_array($permissions)) {
-            if (in_array('*', $permissions) || in_array($permission, $permissions)) {
+            if (
+                in_array('*', $permissions) ||
+                in_array($permission, $permissions)
+            ) {
                 return true;
             }
         }
@@ -139,7 +185,10 @@ class User extends Authenticatable
         $slug = strtolower($slug);
         $roleSlug = strtolower($this->role->slug);
 
-        if ($slug === 'super-admin' && in_array($roleSlug, ['super-admin', 'admin'])) {
+        if (
+            $slug === 'super-admin' &&
+            in_array($roleSlug, ['super-admin', 'admin'])
+        ) {
             return true;
         }
 
@@ -149,12 +198,22 @@ class User extends Authenticatable
     // Relationships for Blocking
     public function blocking()
     {
-        return $this->belongsToMany(User::class, 'blocked_users', 'blocker_id', 'blocked_id');
+        return $this->belongsToMany(
+            User::class,
+            'blocked_users',
+            'blocker_id',
+            'blocked_id'
+        );
     }
 
     public function blockedBy()
     {
-        return $this->belongsToMany(User::class, 'blocked_users', 'blocked_id', 'blocker_id');
+        return $this->belongsToMany(
+            User::class,
+            'blocked_users',
+            'blocked_id',
+            'blocker_id'
+        );
     }
 
     public function unreadChatMessagesCount()
@@ -162,15 +221,26 @@ class User extends Authenticatable
         $userId = $this->id;
 
         return \Illuminate\Support\Facades\DB::table('messages')
-            ->join('conversation_participants', function ($join) use ($userId) {
-                $join->on('messages.conversation_id', '=', 'conversation_participants.conversation_id')
-                    ->where('conversation_participants.user_id', '=', $userId);
-            })
-            ->where('messages.user_id', '!=', $userId)
-            ->where(function ($query) {
-                $query->whereNull('conversation_participants.last_read_at')
-                    ->orWhereColumn('messages.created_at', '>', 'conversation_participants.last_read_at');
-            })
-            ->count();
+        ->join('conversation_participants', function ($join) use ($userId) {
+            $join->on(
+                'messages.conversation_id',
+                '=',
+                'conversation_participants.conversation_id'
+            )->where(
+                'conversation_participants.user_id',
+                '=',
+                $userId
+            );
+        })
+        ->where('messages.user_id', '!=', $userId)
+        ->where(function ($query) {
+            $query->whereNull('conversation_participants.last_read_at')
+            ->orWhereColumn(
+                'messages.created_at',
+                '>',
+                'conversation_participants.last_read_at'
+            );
+        })
+        ->count();
     }
 }

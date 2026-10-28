@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SalaryService;
 use Illuminate\Http\Request;
 
 class TeamController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::with('role');
+        $query = User::with(['role', 'currentSalary']);
 
         if ($request->filled('name')) {
             $query->where('name', 'like', '%'.$request->name.'%');
@@ -19,7 +20,7 @@ class TeamController extends Controller
         if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('email', 'like', '%'.$request->search.'%');
+                ->orWhere('email', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -50,47 +51,51 @@ class TeamController extends Controller
         return view('admin.users.index', compact('users', 'roles'));
     }
 
-    public function storeUser(Request $request)
+    public function storeUser(Request $request, SalaryService $salaries)
     {
-        $request->validate([
+        $request->validate(array_merge([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users|unique:clients',
             'password' => 'required|string|min:8',
             'role_id' => 'nullable|exists:roles,id',
-        ]);
+        ], $this->employeeRules()));
 
-        User::create([
+        $user = User::create(array_merge([
             'name' => $request->name,
             'email' => $request->email,
             'password' => bcrypt($request->password),
             'role_id' => $request->role_id,
             'is_approved' => true, // Manually created users by admin should be approved by default
-        ]);
+        ], $this->employeeData($request)));
+
+        $this->saveSalaryIfProvided($request, $user, $salaries);
 
         return back()->with('success', 'User created successfully and approved.');
     }
 
-    public function updateUser(Request $request, $id)
+    public function updateUser(Request $request, $id, SalaryService $salaries)
     {
         $user = User::findOrFail($id);
 
-        $request->validate([
+        $request->validate(array_merge([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,'.$user->id.'|unique:clients',
             'role_id' => 'nullable|exists:roles,id',
-        ]);
+        ], $this->employeeRules($user->id)));
 
-        $data = [
+        $data = array_merge([
             'name' => $request->name,
             'email' => $request->email,
             'role_id' => $request->role_id,
-        ];
+        ], $this->employeeData($request));
 
         if ($request->filled('password')) {
             $data['password'] = bcrypt($request->password);
         }
 
         $user->update($data);
+
+        $this->saveSalaryIfProvided($request, $user, $salaries);
 
         return back()->with('success', 'User updated successfully.');
     }
@@ -129,40 +134,40 @@ class TeamController extends Controller
 
         switch ($action) {
             case 'approve':
-                if (! auth()->user()->hasPermission('users.approve')) {
-                    abort(403, 'Unauthorized action.');
-                }
-                User::whereIn('id', $ids)->update(['is_approved' => true]);
-                $message = 'Selected users approved successfully.';
-                break;
+            if (! auth()->user()->hasPermission('users.approve')) {
+                abort(403, 'Unauthorized action.');
+            }
+            User::whereIn('id', $ids)->update(['is_approved' => true]);
+            $message = 'Selected users approved successfully.';
+            break;
             case 'disapprove':
-                if (! auth()->user()->hasPermission('users.approve')) {
-                    abort(403, 'Unauthorized action.');
-                }
+            if (! auth()->user()->hasPermission('users.approve')) {
+                abort(403, 'Unauthorized action.');
+            }
                 // Prevent self-disapproval in bulk
-                User::whereIn('id', $ids)->where('id', '!=', auth()->id())->update(['is_approved' => false]);
-                $message = 'Selected users disapproved successfully.';
-                break;
+            User::whereIn('id', $ids)->where('id', '!=', auth()->id())->update(['is_approved' => false]);
+            $message = 'Selected users disapproved successfully.';
+            break;
             case 'delete':
-                if (! auth()->user()->hasPermission('users.delete')) {
-                    abort(403, 'Unauthorized action.');
-                }
-                User::whereIn('id', $ids)->where('id', '!=', auth()->id())->delete();
-                $message = 'Selected users deleted successfully.';
-                break;
+            if (! auth()->user()->hasPermission('users.delete')) {
+                abort(403, 'Unauthorized action.');
+            }
+            User::whereIn('id', $ids)->where('id', '!=', auth()->id())->delete();
+            $message = 'Selected users deleted successfully.';
+            break;
             case 'change_role':
-                if (! auth()->user()->hasPermission('users.edit')) {
-                    abort(403, 'Unauthorized action.');
-                }
-                $roleId = $request->role_id;
-                if (! $roleId) {
-                    return back()->with('error', 'Please select a role.');
-                }
-                User::whereIn('id', $ids)->update(['role_id' => $roleId]);
-                $message = 'Roles updated for selected users.';
-                break;
+            if (! auth()->user()->hasPermission('users.edit')) {
+                abort(403, 'Unauthorized action.');
+            }
+            $roleId = $request->role_id;
+            if (! $roleId) {
+                return back()->with('error', 'Please select a role.');
+            }
+            User::whereIn('id', $ids)->update(['role_id' => $roleId]);
+            $message = 'Roles updated for selected users.';
+            break;
             default:
-                return back()->with('error', 'Invalid action.');
+            return back()->with('error', 'Invalid action.');
         }
 
         return back()->with('success', $message);
@@ -175,7 +180,7 @@ class TeamController extends Controller
         if ($search = request('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('slug', 'like', "%{$search}%");
+                ->orWhere('slug', 'like', "%{$search}%");
             });
         }
 
@@ -245,9 +250,9 @@ class TeamController extends Controller
 
             $protectedSlugs = ['super-admin', 'manager', 'client', 'hr-manager'];
             $roles = Role::whereIn('id', $ids)
-                ->whereNotIn('slug', $protectedSlugs)
-                ->doesntHave('users')
-                ->get();
+            ->whereNotIn('slug', $protectedSlugs)
+            ->doesntHave('users')
+            ->get();
 
             $deletedCount = $roles->count();
             if ($deletedCount === 0) {
@@ -261,4 +266,94 @@ class TeamController extends Controller
 
         return back()->with('error', 'Invalid action.');
     }
+
+    // ------------------------------------------------------------ helpers
+
+    private function employeeRules(?int $ignoreId = null): array
+    {
+        return [
+            'phone' => 'nullable|string|max:20',
+            'date_of_birth' => 'nullable|date|before:today',
+            'gender' => 'nullable|in:male,female,other',
+            'address' => 'nullable|string|max:1000',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:20',
+
+            'employee_code' => 'nullable|string|max:50|unique:users,employee_code'.($ignoreId ? ','.$ignoreId : ''),
+            'designation' => 'nullable|string|max:100',
+            'department' => 'nullable|string|max:100',
+            'joining_date' => 'nullable|date',
+
+            'pan_number' => ['nullable', 'regex:/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/'],
+            'aadhaar_number' => 'nullable|digits:12',
+
+            'bank_name' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|digits_between:6,20',
+            'bank_ifsc' => ['nullable', 'regex:/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/'],
+
+            // Salary (optional, par bharo to teeno zaroori)
+            'monthly_salary' => 'nullable|numeric|min:0.01|max:9999999999.99',
+            'working_days' => 'required_with:monthly_salary|array|min:1',
+            'working_days.*' => 'integer|between:1,7',
+            'effective_from' => 'required_with:monthly_salary|nullable|date',
+            'salary_notes' => 'nullable|string|max:2000',
+        ];
+    }
+
+    private function employeeData(Request $request): array
+    {
+        $data = $request->only([
+            'phone', 'date_of_birth', 'gender', 'address',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'employee_code', 'designation', 'department', 'joining_date',
+            'aadhaar_number', 'bank_name', 'bank_account_number',
+        ]);
+
+        $data['pan_number'] = $request->filled('pan_number') ? strtoupper($request->pan_number) : null;
+        $data['bank_ifsc'] = $request->filled('bank_ifsc') ? strtoupper($request->bank_ifsc) : null;
+
+        // Khaali string ko null banao (employee_code unique hai, '' do baar save nahi ho sakta)
+        foreach ($data as $key => $value) {
+            if ($value === '') {
+                $data[$key] = null;
+            }
+        }
+
+        return $data;
+    }
+
+    private function saveSalaryIfProvided(Request $request, User $user, SalaryService $salaries): void
+    {
+        if (! $request->filled('monthly_salary')) {
+            return;
+        }
+
+        // Salary badalne ki permission sirf payroll wale ko
+        $me = auth()->user();
+        if (! ($me->hasRole('super-admin') || $me->hasPermission('payroll.salary_manage'))) {
+            return;
+        }
+
+        $days = array_map('intval', (array) $request->working_days);
+        sort($days);
+
+        // Kuch badla nahi to naya record mat banao
+        $current = $user->currentSalary;
+        if ($current) {
+            $currentDays = array_map('intval', (array) $current->working_days);
+            sort($currentDays);
+
+            if ((float) $current->monthly_salary === (float) $request->monthly_salary
+                && $currentDays === $days) {
+                return;
+        }
+    }
+
+    $salaries->setSalary($user->id, [
+        'monthly_salary' => $request->monthly_salary,
+        'working_days' => $days,
+        'effective_from' => $request->effective_from,
+        'notes' => $request->salary_notes,
+    ]);
+}
 }

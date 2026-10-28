@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-
+use App\Services\SalaryService;
 class PayrollController extends Controller
 {
     private const PAYMENT_METHODS = ['bank_transfer', 'upi', 'cheque', 'cash'];
@@ -33,28 +33,28 @@ class PayrollController extends Controller
         }
 
         $payrolls = Payroll::query()
-            ->with(['user', 'approver'])
-            ->whereDate('payroll_month', $monthDate->toDateString())
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
-            ->when($request->filled('search'), function ($query) use ($request) {
-                $search = trim($request->input('search'));
+        ->with(['user', 'approver'])
+        ->whereDate('payroll_month', $monthDate->toDateString())
+        ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
+        ->when($request->filled('search'), function ($query) use ($request) {
+            $search = trim($request->input('search'));
 
-                $query->whereHas('user', function ($users) use ($search) {
-                    $users->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
-            })
-            ->latest('id')
-            ->paginate(15)
-            ->withQueryString();
+            $query->whereHas('user', function ($users) use ($search) {
+                $users->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+            });
+        })
+        ->latest('id')
+        ->paginate(15)
+        ->withQueryString();
 
         // Ek hi query me saari stats (pehle 5 queries thi).
         $counts = Payroll::query()
-            ->whereDate('payroll_month', $monthDate->toDateString())
-            ->selectRaw('status, COUNT(*) as total, SUM(final_salary) as net')
-            ->groupBy('status')
-            ->get()
-            ->keyBy('status');
+        ->whereDate('payroll_month', $monthDate->toDateString())
+        ->selectRaw('status, COUNT(*) as total, SUM(final_salary) as net')
+        ->groupBy('status')
+        ->get()
+        ->keyBy('status');
 
         $stats = [
             'total'    => $counts->sum('total'),
@@ -80,7 +80,7 @@ class PayrollController extends Controller
         return view('admin.payroll.salaries', compact('salaries', 'users'));
     }
 
-    public function storeSalary(Request $request): RedirectResponse
+    public function storeSalary(Request $request, SalaryService $salaries): RedirectResponse
     {
         $this->authorizePayroll('salary_manage');
 
@@ -94,29 +94,7 @@ class PayrollController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $workingDays = array_values(array_unique(array_map('intval', $validated['working_days'])));
-
-        DB::transaction(function () use ($validated, $workingDays) {
-            EmployeeSalary::query()
-                ->where('user_id', $validated['user_id'])
-                ->where('is_active', true)
-                ->whereNull('effective_until')
-                ->whereDate('effective_from', '<', $validated['effective_from'])
-                ->update([
-                    'effective_until' => Carbon::parse($validated['effective_from'])->subDay()->toDateString(),
-                    'is_active' => false,
-                ]);
-
-            EmployeeSalary::create([
-                'user_id' => $validated['user_id'],
-                'monthly_salary' => $validated['monthly_salary'],
-                'working_days' => $workingDays,
-                'effective_from' => $validated['effective_from'],
-                'effective_until' => $validated['effective_until'] ?? null,
-                'is_active' => true,
-                'notes' => $validated['notes'] ?? null,
-            ]);
-        });
+        $salaries->setSalary((int) $validated['user_id'], $validated);
 
         return back()->with('success', 'Employee salary saved successfully.');
     }
@@ -139,8 +117,8 @@ class PayrollController extends Controller
         $this->audit($payroll, 'generated');
 
         return redirect()
-            ->route('admin.payroll.show', $payroll->id)
-            ->with('success', 'Payroll generated as draft. Please review it.');
+        ->route('admin.payroll.show', $payroll->id)
+        ->with('success', 'Payroll generated as draft. Please review it.');
     }
 
     /**
@@ -162,20 +140,20 @@ class PayrollController extends Controller
 
         // Jin employees ka salary record is month ko cover karta hai.
         $userIds = EmployeeSalary::query()
-            ->whereDate('effective_from', '<=', $monthEnd->toDateString())
-            ->where(function ($q) use ($monthStart) {
-                $q->whereNull('effective_until')
-                    ->orWhereDate('effective_until', '>=', $monthStart->toDateString());
-            })
-            ->pluck('user_id')
-            ->unique();
+        ->whereDate('effective_from', '<=', $monthEnd->toDateString())
+        ->where(function ($q) use ($monthStart) {
+            $q->whereNull('effective_until')
+            ->orWhereDate('effective_until', '>=', $monthStart->toDateString());
+        })
+        ->pluck('user_id')
+        ->unique();
 
         // Jinka payroll pehle se bana hai unhe skip karo, taaki
         // manual changes aur review ho chuke drafts overwrite na ho.
         $alreadyGenerated = Payroll::query()
-            ->whereDate('payroll_month', $monthStart->toDateString())
-            ->pluck('user_id')
-            ->all();
+        ->whereDate('payroll_month', $monthStart->toDateString())
+        ->pluck('user_id')
+        ->all();
 
         foreach ($userIds as $userId) {
             if (in_array($userId, $alreadyGenerated, true)) {
@@ -310,7 +288,7 @@ class PayrollController extends Controller
         $amountInWords = $this->amountInWords((float) $payroll->final_salary);
 
         $payslipNo = 'PS-' . Carbon::parse($payroll->payroll_month)->format('Ym')
-            . '-' . str_pad((string) $payroll->id, 5, '0', STR_PAD_LEFT);
+        . '-' . str_pad((string) $payroll->id, 5, '0', STR_PAD_LEFT);
 
         return view('admin.payroll.payslip', compact('payroll', 'amountInWords', 'payslipNo'));
     }
@@ -357,7 +335,7 @@ class PayrollController extends Controller
         $paise = (int) round(($amount - $rupees) * 100);
 
         $ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven',
-            'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+        'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
         $tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
         $below100 = fn (int $n) => $n < 20 ? $ones[$n] : trim($tens[intdiv($n, 10)] . ' ' . $ones[$n % 10]);
